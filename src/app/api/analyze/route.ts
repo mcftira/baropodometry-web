@@ -111,8 +111,8 @@ Return a structured JSON response as per your instructions.`,
       thread.id,
       { 
         assistant_id: assistantId,
-        max_prompt_tokens: 50000,
-        max_completion_tokens: 4000
+        max_prompt_tokens: 15000,  // Reduced from 50000
+        max_completion_tokens: 2000  // Reduced from 4000
       }
     );
 
