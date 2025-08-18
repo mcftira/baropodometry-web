@@ -19,11 +19,10 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Get settings with hardcoded defaults
     const settings = getDefaultSettings();
-    
     if (!settings.apiKey) {
-      return new Response(JSON.stringify({ ok: false, error: "No API key configured" }), {
+      console.error("No API key available");
+      return new Response(JSON.stringify({ ok: false, error: "API key not configured" }), {
         status: 500,
         headers: { "content-type": "application/json" },
       });
@@ -36,26 +35,49 @@ export async function POST(req: NextRequest) {
     // Upload PDFs as files for the Assistant
     console.log("Uploading PDF files to OpenAI...");
     
-    const [neutralFile, closedFile, cottonFile] = await Promise.all([
-      openai.files.create({
-        file: neutral,
-        purpose: "assistants"
-      }),
-      openai.files.create({
-        file: closed,
-        purpose: "assistants"
-      }),
-      openai.files.create({
-        file: cotton,
-        purpose: "assistants"
-      })
-    ]);
-
-    console.log("Files uploaded:", {
-      neutral: neutralFile.id,
-      closed: closedFile.id,
-      cotton: cottonFile.id
-    });
+    let neutralFile, closedFile, cottonFile;
+    
+    try {
+      // Convert File objects to Blobs for upload
+      const neutralBlob = new Blob([await neutral.arrayBuffer()], { type: neutral.type });
+      const closedBlob = new Blob([await closed.arrayBuffer()], { type: closed.type });
+      const cottonBlob = new Blob([await cotton.arrayBuffer()], { type: cotton.type });
+      
+      // Create File-like objects with proper names
+      const neutralUpload = new File([neutralBlob], neutral.name, { type: neutral.type });
+      const closedUpload = new File([closedBlob], closed.name, { type: closed.type });
+      const cottonUpload = new File([cottonBlob], cotton.name, { type: cotton.type });
+      
+      [neutralFile, closedFile, cottonFile] = await Promise.all([
+        openai.files.create({
+          file: neutralUpload,
+          purpose: "assistants"
+        }),
+        openai.files.create({
+          file: closedUpload,
+          purpose: "assistants"
+        }),
+        openai.files.create({
+          file: cottonUpload,
+          purpose: "assistants"
+        })
+      ]);
+      
+      console.log("Files uploaded successfully:", {
+        neutral: neutralFile.id,
+        closed: closedFile.id,
+        cotton: cottonFile.id
+      });
+    } catch (uploadError) {
+      console.error("Error uploading files:", uploadError);
+      return new Response(JSON.stringify({ 
+        ok: false, 
+        error: "Failed to upload PDF files. Please try again." 
+      }), {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      });
+    }
 
     // Create thread with the files attached
     const thread = await openai.beta.threads.create({
@@ -83,7 +105,7 @@ Return a structured JSON response as per your instructions.`,
       : settings.assistantIdNormal;
     
     console.log("Using assistant:", assistantId, "for mode:", mode);
-    console.log("Settings:", settings);
+    console.log("Thread ID:", thread.id);
     
     const run = await openai.beta.threads.runs.createAndPoll(
       thread.id,
@@ -98,6 +120,25 @@ Return a structured JSON response as per your instructions.`,
     if (run.status === 'failed') {
       console.error("Run failed:", run);
       console.error("Last error:", run.last_error);
+      
+      // Clean up uploaded files
+      try {
+        await Promise.all([
+          openai.files.del(neutralFile.id),
+          openai.files.del(closedFile.id),
+          openai.files.del(cottonFile.id)
+        ]);
+      } catch (cleanupError) {
+        console.error("Error cleaning up files:", cleanupError);
+      }
+      
+      return new Response(JSON.stringify({ 
+        ok: false, 
+        error: `Assistant run failed: ${run.last_error?.message || 'Unknown error'}` 
+      }), {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      });
     }
 
     if (run.status === 'completed') {
@@ -123,17 +164,27 @@ Return a structured JSON response as per your instructions.`,
             stages: {
               neutral: { textMetrics: {}, visionMetrics: {} },
               closed_eyes: { textMetrics: {}, visionMetrics: {} },
-              cotton_rolls: { textMetrics: {}, visionMetrics: {} },
+              cotton_rolls: { textMetrics: {}, visionMetrics: {} }
             },
-            comparisons: {
-              romberg: {},
-              cottonEffect: {},
-              summary: responseText,
-              confidence: 0.5
+            interpretation: {
+              vision_findings: responseText,
+              clinical_interpretation: "Unable to parse structured response",
+              evidence_status: "VALID"
             }
           };
         }
-
+        
+        // Clean up uploaded files after successful processing
+        try {
+          await Promise.all([
+            openai.files.del(neutralFile.id),
+            openai.files.del(closedFile.id),
+            openai.files.del(cottonFile.id)
+          ]);
+        } catch (cleanupError) {
+          console.error("Error cleaning up files:", cleanupError);
+        }
+        
         return new Response(JSON.stringify({ ok: true, data: result }), {
           status: 200,
           headers: { "content-type": "application/json" },
@@ -141,19 +192,11 @@ Return a structured JSON response as per your instructions.`,
       }
     }
 
-    // If run failed or no response
-    return new Response(JSON.stringify({ 
-      ok: false, 
-      error: `Assistant run failed: ${run.status}`,
-      details: run.last_error 
-    }), {
-      status: 500,
-      headers: { "content-type": "application/json" },
-    });
-
-  } catch (e) {
-    const message = e instanceof Error ? e.message : "Processing error";
-    console.error("API analyze error:", e);
+    throw new Error(`Assistant run ended with unexpected status: ${run.status}`);
+    
+  } catch (error) {
+    console.error("Error in analyze route:", error);
+    const message = error instanceof Error ? error.message : "Unknown error";
     return new Response(JSON.stringify({ ok: false, error: message }), {
       status: 500,
       headers: { "content-type": "application/json" },
