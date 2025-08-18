@@ -105,14 +105,26 @@ Return a structured JSON response as per your instructions.`,
       : settings.assistantIdNormal;
     
     console.log("Using assistant:", assistantId, "for mode:", mode);
+    console.log("Model:", settings.model);
     console.log("Thread ID:", thread.id);
+    
+    // Adjust token limits based on model
+    const tokenLimits = {
+      "gpt-4o": { prompt: 15000, completion: 2000 },
+      "gpt-4o-mini": { prompt: 25000, completion: 3000 },
+      "gpt-4-turbo": { prompt: 20000, completion: 2500 },
+      "gpt-3.5-turbo": { prompt: 10000, completion: 1500 }
+    };
+    
+    const limits = tokenLimits[settings.model as keyof typeof tokenLimits] || tokenLimits["gpt-4o-mini"];
     
     const run = await openai.beta.threads.runs.createAndPoll(
       thread.id,
       { 
         assistant_id: assistantId,
-        max_prompt_tokens: 15000,  // Reduced from 50000
-        max_completion_tokens: 2000  // Reduced from 4000
+        model: settings.model, // Override assistant's default model
+        max_prompt_tokens: limits.prompt,
+        max_completion_tokens: limits.completion
       }
     );
 

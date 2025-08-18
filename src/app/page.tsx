@@ -80,13 +80,35 @@ export default function Home() {
       );
       
       const res = await fetch("/api/analyze", { method: "POST", body: form });
+      const data = await res.json();
+      
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-        throw new Error(errData.error || `HTTP ${res.status}`);
+        // Parse specific error types
+        let errorMessage = data.error || `HTTP ${res.status}`;
+        
+        // Check for rate limit error
+        if (errorMessage.includes("rate_limit_exceeded")) {
+          const match = errorMessage.match(/Please try again in ([\d.]+)s/);
+          const seconds = match ? match[1] : "a few seconds";
+          errorMessage = `⏱️ Rate limit exceeded. Please wait ${seconds} seconds and try again. Consider switching to GPT-4o Mini in Settings for higher limits.`;
+        }
+        // Check for assistant not found
+        else if (errorMessage.includes("No assistant found") || errorMessage.includes("asst_")) {
+          errorMessage = `🔧 Assistant configuration error. Please check your Assistant IDs in Settings or recreate assistants.`;
+        }
+        // Check for API key error
+        else if (errorMessage.includes("API key") || errorMessage.includes("Incorrect API key")) {
+          errorMessage = `🔑 Invalid API key. Please check your OpenAI API key in Settings.`;
+        }
+        // Check for file upload error
+        else if (errorMessage.includes("Failed to upload")) {
+          errorMessage = `📁 Failed to upload PDF files. Please try again or check if PDFs are valid.`;
+        }
+        
+        throw new Error(errorMessage);
       }
       
       setProgress("Parsing results...");
-      const data = await res.json();
       
       if (data.ok && data.data) {
         setResult(data.data);
@@ -169,8 +191,21 @@ export default function Home() {
               )}
               
               {error && (
-                <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700">
-                  <strong>Error:</strong> {error}
+                <div className="mt-3 p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <span className="text-2xl">⚠️</span>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-red-800 mb-1">Error occurred:</p>
+                      <p className="text-sm text-red-700">{error}</p>
+                      {error.includes("Rate limit") && (
+                        <div className="mt-2 pt-2 border-t border-red-200">
+                          <a href="/settings" className="text-xs text-red-600 underline">
+                            → Go to Settings to change model
+          </a>
+        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
             </section>
