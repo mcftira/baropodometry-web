@@ -46,7 +46,7 @@ export default function Home() {
 
       <main className="max-w-6xl mx-auto w-full p-6 grid gap-6 sm:grid-cols-2">
         <section className="glass-card p-6">
-          <h2 className="text-lg font-medium mb-4">Feltöltés · 3 PDF (stage-enként 1)</h2>
+          <h2 className="text-lg font-medium mb-4">Upload · 3 PDFs (1 per stage)</h2>
           <div className="grid gap-3">
             <Uploader label="Neutral" onPick={(f)=>onPick("neutral", f)} />
             <Uploader label="Closed Eyes" onPick={(f)=>onPick("closed_eyes", f)} />
@@ -54,15 +54,15 @@ export default function Home() {
           </div>
           <div className="mt-5 flex gap-3">
             <button className="btn-primary" onClick={onSubmit} disabled={busy}>
-              {busy ? "Feldolgozás..." : "Elemzés indítása"}
+              {busy ? "Processing..." : "Start analysis"}
             </button>
           </div>
           {error && <p className="text-red-600 mt-3">{error}</p>}
         </section>
 
         <section className="glass-card p-6 min-h-[300px]">
-          <h2 className="text-lg font-medium mb-4">Eredmény (JSON)</h2>
-          <pre className="text-xs whitespace-pre-wrap">{result || "Nincs még eredmény."}</pre>
+          <h2 className="text-lg font-medium mb-4">Result (JSON)</h2>
+          <pre className="text-xs whitespace-pre-wrap">{result || "No result yet."}</pre>
         </section>
       </main>
 

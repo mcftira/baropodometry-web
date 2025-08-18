@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
     const cotton = form.get("cotton_rolls");
 
     if (!(neutral && closed && cotton)) {
-      return new Response(JSON.stringify({ ok: false, error: "Hiányzó PDF(ek). 3 stage szükséges." }), {
+      return new Response(JSON.stringify({ ok: false, error: "Missing PDF(s). 3 stages required." }), {
         status: 400,
         headers: { "content-type": "application/json" },
       });
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
       comparisons: {
         romberg: { length: null, area: null, velocity: null },
         cottonEffect: { length: null, area: null, velocity: null },
-        summary: "POC stub: feldolgozás később kerül bekötésre.",
+        summary: "POC stub: processing will be connected later.",
         confidence: 0.0,
       },
     };
