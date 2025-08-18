@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { getDefaultApiKey } from "@/lib/server-config";
 
 export const runtime = "nodejs";
 
@@ -16,6 +17,10 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // Ensure API key availability now (server-side)
+    const apiKey = process.env.OPENAI_API_KEY || getDefaultApiKey();
+    const apiKeyOk = typeof apiKey === "string" && apiKey.length > 10;
+
     // MVP stub: itt fogjuk hívni a Vision Assistant backendet vagy edge functiont.
     // Válaszként visszaadunk egy minta sémát, hogy a UI működjön.
     const demo = {
@@ -28,7 +33,9 @@ export async function POST(req: NextRequest) {
       comparisons: {
         romberg: { length: null, area: null, velocity: null },
         cottonEffect: { length: null, area: null, velocity: null },
-        summary: "POC stub: processing will be connected later.",
+        summary: apiKeyOk
+          ? "POC stub: processing will be connected later. API key detected."
+          : "POC stub: processing will be connected later. No API key detected.",
         confidence: 0.0,
       },
     };

@@ -1,18 +1,18 @@
 "use client";
 import { useEffect, useState } from "react";
-import { loadSettings, saveSettings } from "@/src/lib/settings";
-import type { AppSettings } from "@/src/lib/types";
+import { loadSettings, saveSettings } from "@/lib/settings";
+import type { AppSettings } from "@/lib/types";
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings>({ language: "English" });
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    setSettings((s) => ({ ...s, ...loadSettings() }));
+    setSettings((s: AppSettings) => ({ ...s, ...loadSettings() }));
   }, []);
 
   function update<K extends keyof AppSettings>(k: K, v: AppSettings[K]) {
-    setSettings((s) => ({ ...s, [k]: v }));
+    setSettings((s: AppSettings) => ({ ...s, [k]: v }));
   }
 
   function onSave() {
