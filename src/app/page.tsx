@@ -1,5 +1,20 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { 
+  Upload, 
+  FileCheck, 
+  Activity, 
+  Brain, 
+  Search, 
+  CheckCircle2, 
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  FileText,
+  Eye,
+  Package
+} from "lucide-react";
 
 type Stage = "neutral" | "closed_eyes" | "cotton_rolls";
 type AnalysisMode = "normal" | "comparison";
@@ -47,10 +62,18 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
   const [statusMessages, setStatusMessages] = useState<string[]>([]);
+  const [currentMessageIndex, setCurrentMessageIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [showRaw, setShowRaw] = useState(false);
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("normal");
+
+  // Auto-advance carousel when new messages arrive
+  useEffect(() => {
+    if (statusMessages.length > 0) {
+      setCurrentMessageIndex(statusMessages.length - 1);
+    }
+  }, [statusMessages]);
 
   function onPick(stage: Stage, f?: File) {
     setFiles((prev) => ({ ...prev, [stage]: f }));
@@ -167,7 +190,10 @@ export default function Home() {
         {!result ? (
           <div className="grid gap-6 md:grid-cols-2">
             <section className="glass-card p-6">
-              <h2 className="text-lg font-medium mb-4">Upload · 3 PDFs (1 per stage)</h2>
+              <h2 className="text-lg font-medium mb-4 flex items-center gap-2">
+                <Upload className="h-5 w-5" />
+                Upload · 3 PDFs (1 per stage)
+              </h2>
               <div className="grid gap-3">
                 <Uploader 
                   label="Neutral" 
@@ -235,24 +261,85 @@ export default function Home() {
             </section>
 
             <section className="glass-card p-6">
-              <h2 className="text-lg font-medium mb-4">Status</h2>
+              <h2 className="text-lg font-medium mb-4 flex items-center gap-2">
+                <Activity className="h-5 w-5" />
+                Status
+              </h2>
               {busy ? (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   <div className="flex items-center gap-3">
-                    <div className="animate-spin h-5 w-5 border-2 border-[color:var(--brand)] border-t-transparent rounded-full"></div>
+                    <Loader2 className="animate-spin h-5 w-5 text-[color:var(--brand)]" />
                     <span className="text-sm font-medium">{progress}</span>
                   </div>
                   
                   {statusMessages.length > 0 && (
-                    <div className="mt-4 p-3 bg-gray-50 rounded-lg max-h-48 overflow-y-auto">
-                      <div className="text-xs font-mono space-y-1">
-                        {statusMessages.slice(-10).map((msg, idx) => (
-                          <div key={idx} className="flex items-start gap-2">
-                            <span className="opacity-40">{String(statusMessages.length - 10 + idx + 1).padStart(2, '0')}</span>
-                            <span className={msg.includes('✅') ? 'text-green-600' : msg.includes('⚠️') || msg.includes('❌') ? 'text-red-600' : 'text-gray-700'}>
-                              {msg}
-                            </span>
-                          </div>
+                    <div className="mt-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs opacity-60">
+                          Step {currentMessageIndex + 1} of {statusMessages.length}
+                        </span>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => setCurrentMessageIndex(Math.max(0, currentMessageIndex - 1))}
+                            disabled={currentMessageIndex === 0}
+                            className="p-1 rounded hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => setCurrentMessageIndex(Math.min(statusMessages.length - 1, currentMessageIndex + 1))}
+                            disabled={currentMessageIndex === statusMessages.length - 1}
+                            className="p-1 rounded hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                      
+                      <div className="p-4 bg-gradient-to-r from-blue-50 to-green-50 rounded-lg min-h-[80px] flex items-center">
+                        <div className="flex items-center gap-3 w-full">
+                          {(() => {
+                            const msg = statusMessages[currentMessageIndex];
+                            const getIcon = () => {
+                              if (msg.includes('✅') || msg.includes('complete')) return <CheckCircle2 className="h-6 w-6 text-green-600" />;
+                              if (msg.includes('📤') || msg.includes('Upload')) return <Upload className="h-6 w-6 text-blue-600" />;
+                              if (msg.includes('📄') || msg.includes('PDF')) return <FileText className="h-6 w-6 text-orange-600" />;
+                              if (msg.includes('🤖') || msg.includes('AI') || msg.includes('Assistant')) return <Brain className="h-6 w-6 text-purple-600" />;
+                              if (msg.includes('🔍') || msg.includes('Analyz')) return <Search className="h-6 w-6 text-indigo-600" />;
+                              if (msg.includes('📊') || msg.includes('metric')) return <Activity className="h-6 w-6 text-cyan-600" />;
+                              if (msg.includes('👁') || msg.includes('Eyes')) return <Eye className="h-6 w-6 text-teal-600" />;
+                              if (msg.includes('⚙️') || msg.includes('model')) return <Package className="h-6 w-6 text-gray-600" />;
+                              return <FileCheck className="h-6 w-6 text-blue-600" />;
+                            };
+                            
+                            return (
+                              <>
+                                {getIcon()}
+                                <div className="flex-1">
+                                  <p className="text-sm font-medium text-gray-800">
+                                    {msg.replace(/[✅❌⚠️🔄📤📄🤖🔍📊👁⚙️🦷]/g, '').trim()}
+                                  </p>
+                                  <p className="text-xs text-gray-500 mt-0.5">
+                                    {new Date().toLocaleTimeString()}
+                                  </p>
+                                </div>
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                      
+                      <div className="flex justify-center mt-3 gap-1">
+                        {statusMessages.map((_, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => setCurrentMessageIndex(idx)}
+                            className={`h-1.5 rounded-full transition-all ${
+                              idx === currentMessageIndex 
+                                ? 'w-6 bg-[color:var(--brand)]' 
+                                : 'w-1.5 bg-gray-300 hover:bg-gray-400'
+                            }`}
+                          />
                         ))}
                       </div>
                     </div>
