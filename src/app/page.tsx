@@ -85,8 +85,50 @@ export default function Home() {
     setError(null);
     setResult(null);
     setAnalysisMode(mode);
-    setStatusMessages([]);
-    setProgress("Initializing...");
+    setProgress("Processing analysis...");
+    
+    // Set dummy status messages for carousel
+    const dummyMessages = mode === "comparison" ? [
+      "🔄 Initializing comparison analysis",
+      "📤 Uploading PDF files",
+      "✅ PDFs validated successfully",
+      "🧵 Creating analysis thread",
+      "🤖 Engaging Comparison Expert",
+      "📊 Extracting Neutral stage metrics",
+      "👁️ Analyzing Closed Eyes data",
+      "🦷 Processing Cotton Rolls measurements",
+      "📈 Computing Romberg ratio",
+      "📈 Computing Cotton Effect",
+      "📚 Searching medical literature",
+      "✍️ Generating clinical interpretation",
+      "✅ Analysis complete"
+    ] : [
+      "🔄 Initializing stage analysis",
+      "📤 Uploading PDF files",
+      "✅ PDFs validated successfully",
+      "🧵 Creating analysis thread",
+      "🤖 Engaging Analysis Expert",
+      "📊 Reading Global Synthesis values",
+      "📏 Extracting L/S Ratio metrics",
+      "🎯 Analyzing velocity parameters",
+      "📐 Computing ellipse areas",
+      "🔍 Processing stabilograms",
+      "🌡️ Analyzing heatmaps",
+      "📚 Searching knowledge base",
+      "✍️ Generating diagnosis",
+      "✅ Analysis complete"
+    ];
+    
+    setStatusMessages(dummyMessages);
+    
+    // Simulate progress through messages
+    let messageIndex = 0;
+    const progressInterval = setInterval(() => {
+      if (messageIndex < dummyMessages.length - 1) {
+        messageIndex++;
+        setCurrentMessageIndex(messageIndex);
+      }
+    }, 2000); // Change message every 2 seconds
     
     try {
       const form = new FormData();
@@ -98,69 +140,45 @@ export default function Home() {
       // Add analysis mode to form data
       form.append("mode", mode);
       
-      // Use streaming API
-      const response = await fetch("/api/analyze-stream", { 
+      // Use regular API (not streaming)
+      const res = await fetch("/api/analyze", { 
         method: "POST", 
         body: form 
       });
       
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
+      const data = await res.json();
       
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      
-      if (!reader) {
-        throw new Error("No response body");
-      }
-      
-      while (true) {
-        const { done, value } = await reader.read();
+      if (!res.ok) {
+        // Parse specific error types
+        let errorMessage = data.error || `HTTP ${res.status}`;
         
-        if (done) break;
-        
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
-        
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              
-              if (data.type === 'status') {
-                setProgress(data.message);
-                setStatusMessages(prev => [...prev, data.message]);
-              } else if (data.type === 'complete') {
-                setResult(data.data);
-                setProgress("");
-                setStatusMessages([]);
-              } else if (data.type === 'error') {
-                // Parse specific error types
-                let errorMessage = data.message;
-                
-                if (errorMessage.includes("rate_limit_exceeded")) {
-                  const match = errorMessage.match(/Please try again in ([\d.]+)s/);
-                  const seconds = match ? match[1] : "a few seconds";
-                  errorMessage = `⏱️ Rate limit exceeded. Please wait ${seconds} seconds and try again. Consider switching to GPT-4o Mini in Settings for higher limits.`;
-                } else if (errorMessage.includes("No assistant found") || errorMessage.includes("asst_")) {
-                  errorMessage = `🔧 Assistant configuration error. Please check your Assistant IDs in Settings or recreate assistants.`;
-                } else if (errorMessage.includes("API key") || errorMessage.includes("Incorrect API key")) {
-                  errorMessage = `🔑 Invalid API key. Please check your OpenAI API key in Settings.`;
-                } else if (errorMessage.includes("Failed to upload")) {
-                  errorMessage = `📁 Failed to upload PDF files. Please try again or check if PDFs are valid.`;
-                }
-                
-                throw new Error(errorMessage);
-              }
-            } catch (e) {
-              if (e instanceof Error && e.message) {
-                throw e;
-              }
-              // Ignore parse errors for incomplete chunks
-            }
-          }
+        if (errorMessage.includes("rate_limit_exceeded")) {
+          const match = errorMessage.match(/Please try again in ([\d.]+)s/);
+          const seconds = match ? match[1] : "a few seconds";
+          errorMessage = `⏱️ Rate limit exceeded. Please wait ${seconds} seconds and try again. Consider switching to GPT-4o Mini in Settings for higher limits.`;
+        } else if (errorMessage.includes("No assistant found") || errorMessage.includes("asst_")) {
+          errorMessage = `🔧 Assistant configuration error. Please check your Assistant IDs in Settings or recreate assistants.`;
+        } else if (errorMessage.includes("API key") || errorMessage.includes("Incorrect API key")) {
+          errorMessage = `🔑 Invalid API key. Please check your OpenAI API key in Settings.`;
+        } else if (errorMessage.includes("Failed to upload")) {
+          errorMessage = `📁 Failed to upload PDF files. Please try again or check if PDFs are valid.`;
         }
+        
+        throw new Error(errorMessage);
+      }
+      
+      if (data.ok && data.data) {
+        // Show final message
+        setCurrentMessageIndex(dummyMessages.length - 1);
+        setProgress("");
+        
+        // Wait a bit before showing results
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        setResult(data.data);
+        setStatusMessages([]);
+      } else {
+        throw new Error(data.error || "Invalid response");
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Error";
@@ -168,6 +186,7 @@ export default function Home() {
       setProgress("");
       setStatusMessages([]);
     } finally {
+      clearInterval(progressInterval);
       setBusy(false);
     }
   }
