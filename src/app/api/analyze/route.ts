@@ -74,6 +74,9 @@ Return a JSON object with stages data and comparisons.
       ? settings.assistantIdComparison 
       : settings.assistantIdNormal;
     
+    console.log("Using assistant:", assistantId, "for mode:", mode);
+    console.log("Settings:", settings);
+    
     const run = await openai.beta.threads.runs.createAndPoll(
       thread.id,
       { 
@@ -82,6 +85,12 @@ Return a JSON object with stages data and comparisons.
         max_completion_tokens: 4000
       }
     );
+
+    console.log("Run status:", run.status);
+    if (run.status === 'failed') {
+      console.error("Run failed:", run);
+      console.error("Last error:", run.last_error);
+    }
 
     if (run.status === 'completed') {
       // Get messages

@@ -29,9 +29,9 @@ export function getDefaultSettings() {
   return {
     apiKey: getDefaultApiKey(),
     useAssistants: true, // Default to using Assistants API
-    vectorStoreId: process.env.VECTOR_STORE_ID || "vs_FVJy8hCXvnQB2eP5HdDQJZRl",
-    assistantIdComparison: process.env.ASSISTANT_ID_COMPARISON || "asst_iGNqiAQ7JuvIYPC5m8Wxuk4t",
-    assistantIdNormal: process.env.ASSISTANT_ID_NORMAL || "asst_ITfLIZob9chdh16JmZwrKdQW",
+    vectorStoreId: process.env.VECTOR_STORE_ID || "vs_688ced7042548191997d956b277fd0e0",
+    assistantIdComparison: process.env.ASSISTANT_ID_COMPARISON || "asst_14VtaUWRRNCtt1rm41mV2BoU",
+    assistantIdNormal: process.env.ASSISTANT_ID_NORMAL || "asst_1LcuVlQP3G9XThdN1ZQhJE8z",
     model: "gpt-4o",
     language: "English" as const
   };
