@@ -33,6 +33,15 @@ type Stage = "neutral" | "closed_eyes" | "cotton_rolls";
 type AnalysisMode = "normal" | "comparison";
 
 interface StageData {
+  mainStabilometric?: Record<string, unknown>;
+  footCenters?: {
+    left?: Record<string, unknown>;
+    right?: Record<string, unknown>;
+  };
+  swayDensity?: Record<string, unknown>;
+  globalSynthesis?: Record<string, unknown>;
+  visualAnalysis?: Record<string, unknown>;
+  // Legacy fields for backward compatibility
   textMetrics?: Record<string, unknown>;
   visionMetrics?: Record<string, unknown>;
 }
@@ -492,12 +501,28 @@ export default function Home() {
                     <div className="text-xs space-y-1">
                       {result.stages?.[stage] ? (
                         <>
-                          <p>✓ Data extracted</p>
-                          {Object.keys(result.stages[stage] as StageData).length > 0 && (
-                            <p className="opacity-60">
-                              {Object.keys(result.stages[stage] as StageData).join(", ")}
-                            </p>
-                          )}
+                          <p className="flex items-center gap-1">
+                            <CheckCircle2 className="h-3 w-3 text-green-600" />
+                            Data extracted
+                          </p>
+                          {(() => {
+                            const data = result.stages[stage] as StageData;
+                            const sections = [];
+                            if (data.mainStabilometric) sections.push("Main Parameters");
+                            if (data.footCenters) sections.push("Foot Centers");
+                            if (data.swayDensity) sections.push("Sway Density");
+                            if (data.globalSynthesis) sections.push("Global Synthesis");
+                            if (data.visualAnalysis) sections.push("Visual Analysis");
+                            // Legacy support
+                            if (data.textMetrics) sections.push("Text Metrics");
+                            if (data.visionMetrics) sections.push("Vision Metrics");
+                            
+                            return sections.length > 0 && (
+                              <p className="opacity-60 text-[10px]">
+                                {sections.join(" • ")}
+                              </p>
+                            );
+                          })()}
                         </>
                       ) : (
                         <p className="opacity-60">No data</p>
