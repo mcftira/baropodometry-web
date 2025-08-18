@@ -31,6 +31,15 @@ interface AnalysisResult {
     summary?: string;
     confidence?: number;
   };
+  interpretation?: {
+    vision_findings?: string;
+    clinical_interpretation?: string;
+    literature_support?: string;
+    conclusion?: string;
+    diagnosis?: string;
+    evidence_status?: "VALID" | "INVALID";
+    refusal_reason?: string | null;
+  };
 }
 
 export default function Home() {
@@ -271,12 +280,53 @@ export default function Home() {
               </div>
             )}
 
-            {/* Summary */}
+            {/* Summary for Comparison Mode */}
             {result.comparisons?.summary && (
               <section className="glass-card p-6">
                 <h3 className="text-lg font-medium mb-3">Clinical Summary</h3>
                 <p className="text-sm whitespace-pre-wrap">{result.comparisons.summary}</p>
               </section>
+            )}
+
+            {/* Clinical Report for Stage Analysis Mode */}
+            {analysisMode === "normal" && result.interpretation && (
+              <div className="space-y-4">
+                {result.interpretation.vision_findings && (
+                  <section className="glass-card p-6">
+                    <h3 className="text-lg font-medium mb-3">Vision Findings</h3>
+                    <p className="text-sm whitespace-pre-wrap">{result.interpretation.vision_findings}</p>
+                  </section>
+                )}
+                
+                {result.interpretation.clinical_interpretation && (
+                  <section className="glass-card p-6">
+                    <h3 className="text-lg font-medium mb-3">Clinical Interpretation</h3>
+                    <p className="text-sm whitespace-pre-wrap">{result.interpretation.clinical_interpretation}</p>
+                  </section>
+                )}
+                
+                {result.interpretation.literature_support && (
+                  <section className="glass-card p-6">
+                    <h3 className="text-lg font-medium mb-3">Literature Support</h3>
+                    <p className="text-sm whitespace-pre-wrap">{result.interpretation.literature_support}</p>
+                  </section>
+                )}
+                
+                {result.interpretation.conclusion && (
+                  <section className="glass-card p-6">
+                    <h3 className="text-lg font-medium mb-3">Conclusion</h3>
+                    <p className="text-sm whitespace-pre-wrap">{result.interpretation.conclusion}</p>
+                  </section>
+                )}
+                
+                {result.interpretation.diagnosis && (
+                  <section className="glass-card p-6 bg-blue-50">
+                    <h3 className="text-lg font-medium mb-3 text-blue-900">Provisional Diagnosis</h3>
+                    <p className="text-sm whitespace-pre-wrap text-blue-800">{result.interpretation.diagnosis}</p>
+                    <p className="text-xs mt-3 opacity-70">Note: This is a provisional clinical impression. Clinical correlation and further evaluation are advised.</p>
+                  </section>
+                )}
+              </div>
             )}
 
             {/* Raw JSON Toggle */}
