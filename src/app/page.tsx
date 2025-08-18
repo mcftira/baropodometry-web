@@ -13,7 +13,20 @@ import {
   Loader2,
   FileText,
   Eye,
-  Package
+  Package,
+  FileUp,
+  TrendingUp,
+  BarChart3,
+  Heart,
+  BookOpen,
+  Stethoscope,
+  ClipboardCheck,
+  Download,
+  RefreshCw,
+  XCircle,
+  Info,
+  Zap,
+  Target
 } from "lucide-react";
 
 type Stage = "neutral" | "closed_eyes" | "cotton_rolls";
@@ -199,10 +212,19 @@ export default function Home() {
     <div className="app-shell font-sans">
       <header className="px-6 py-4 brand-gradient border-b border-[color:var(--muted)]">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <h1 className="text-2xl font-semibold tracking-tight">Baropodometry Analyzer Web</h1>
-          <div className="text-sm opacity-80 flex items-center gap-3">
-            <a href="/settings" className="underline underline-offset-4">Settings</a>
-            <span>Modern Medical UI · 2025</span>
+          <div className="flex items-center gap-3">
+            <Activity className="h-6 w-6 text-white/90" />
+            <h1 className="text-2xl font-semibold tracking-tight">Baropodometry Analyzer Web</h1>
+          </div>
+          <div className="text-sm opacity-80 flex items-center gap-4">
+            <a href="/settings" className="flex items-center gap-1.5 underline underline-offset-4 hover:opacity-100 transition-opacity">
+              <Zap className="h-4 w-4" />
+              Settings
+            </a>
+            <span className="flex items-center gap-1.5">
+              <Heart className="h-4 w-4" />
+              Modern Medical UI · 2025
+            </span>
           </div>
         </div>
       </header>
@@ -212,22 +234,25 @@ export default function Home() {
           <div className="grid gap-6 md:grid-cols-2">
             <section className="glass-card p-6">
               <h2 className="text-lg font-medium mb-4 flex items-center gap-2">
-                <Upload className="h-5 w-5" />
+                <FileUp className="h-5 w-5 text-blue-600" />
                 Upload · 3 PDFs (1 per stage)
               </h2>
               <div className="grid gap-3">
                 <Uploader 
                   label="Neutral" 
+                  icon={<Target className="h-4 w-4 text-gray-600" />}
                   file={files.neutral}
                   onPick={(f) => onPick("neutral", f)} 
                 />
                 <Uploader 
                   label="Closed Eyes" 
+                  icon={<Eye className="h-4 w-4 text-gray-600" />}
                   file={files.closed_eyes}
                   onPick={(f) => onPick("closed_eyes", f)} 
                 />
                 <Uploader 
                   label="Cotton Rolls (Bite)" 
+                  icon={<Package className="h-4 w-4 text-gray-600" />}
                   file={files.cotton_rolls}
                   onPick={(f) => onPick("cotton_rolls", f)} 
                 />
@@ -237,18 +262,26 @@ export default function Home() {
                 <h3 className="text-sm font-medium opacity-80">Choose Analysis Type:</h3>
                 <div className="flex gap-3">
                   <button 
-                    className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex-1" 
+                    className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex-1 flex items-center justify-center gap-2" 
                     onClick={() => onSubmit("normal")} 
                     disabled={busy || !hasAllFiles}
                   >
-                    {busy && analysisMode === "normal" ? "Processing..." : "Stage Analysis"}
+                    {busy && analysisMode === "normal" ? (
+                      <><Loader2 className="h-4 w-4 animate-spin" /> Processing...</>
+                    ) : (
+                      <><BarChart3 className="h-4 w-4" /> Stage Analysis</>
+                    )}
                   </button>
                   <button 
-                    className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed flex-1" 
+                    className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed flex-1 flex items-center justify-center gap-2" 
                     onClick={() => onSubmit("comparison")} 
                     disabled={busy || !hasAllFiles}
                   >
-                    {busy && analysisMode === "comparison" ? "Processing..." : "Comparison Analysis"}
+                    {busy && analysisMode === "comparison" ? (
+                      <><Loader2 className="h-4 w-4 animate-spin" /> Processing...</>
+                    ) : (
+                      <><TrendingUp className="h-4 w-4" /> Comparison Analysis</>
+                    )}
                   </button>
                 </div>
                 <div className="text-xs opacity-60">
@@ -407,13 +440,18 @@ export default function Home() {
         ) : (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-semibold">
-                {analysisMode === "comparison" ? "Comparison Analysis Results" : "Stage Analysis Results"}
+              <h2 className="text-2xl font-semibold flex items-center gap-2">
+                {analysisMode === "comparison" ? (
+                  <><TrendingUp className="h-6 w-6 text-blue-600" /> Comparison Analysis Results</>
+                ) : (
+                  <><BarChart3 className="h-6 w-6 text-emerald-600" /> Stage Analysis Results</>
+                )}
               </h2>
               <button 
                 onClick={() => { setResult(null); setFiles({}); }}
-                className="text-sm underline"
+                className="text-sm underline flex items-center gap-1.5 hover:text-blue-600 transition-colors"
               >
+                <RefreshCw className="h-4 w-4" />
                 New Analysis
               </button>
             </div>
@@ -483,35 +521,50 @@ export default function Home() {
               <div className="space-y-4">
                 {result.interpretation.vision_findings && (
                   <section className="glass-card p-6">
-                    <h3 className="text-lg font-medium mb-3">Vision Findings</h3>
+                    <h3 className="text-lg font-medium mb-3 flex items-center gap-2">
+                      <Eye className="h-5 w-5 text-blue-600" />
+                      Vision Findings
+                    </h3>
                     <p className="text-sm whitespace-pre-wrap">{result.interpretation.vision_findings}</p>
                   </section>
                 )}
                 
                 {result.interpretation.clinical_interpretation && (
                   <section className="glass-card p-6">
-                    <h3 className="text-lg font-medium mb-3">Clinical Interpretation</h3>
+                    <h3 className="text-lg font-medium mb-3 flex items-center gap-2">
+                      <Brain className="h-5 w-5 text-purple-600" />
+                      Clinical Interpretation
+                    </h3>
                     <p className="text-sm whitespace-pre-wrap">{result.interpretation.clinical_interpretation}</p>
                   </section>
                 )}
                 
                 {result.interpretation.literature_support && (
                   <section className="glass-card p-6">
-                    <h3 className="text-lg font-medium mb-3">Literature Support</h3>
+                    <h3 className="text-lg font-medium mb-3 flex items-center gap-2">
+                      <BookOpen className="h-5 w-5 text-green-600" />
+                      Literature Support
+                    </h3>
                     <p className="text-sm whitespace-pre-wrap">{result.interpretation.literature_support}</p>
                   </section>
                 )}
                 
                 {result.interpretation.conclusion && (
                   <section className="glass-card p-6">
-                    <h3 className="text-lg font-medium mb-3">Conclusion</h3>
+                    <h3 className="text-lg font-medium mb-3 flex items-center gap-2">
+                      <ClipboardCheck className="h-5 w-5 text-orange-600" />
+                      Conclusion
+                    </h3>
                     <p className="text-sm whitespace-pre-wrap">{result.interpretation.conclusion}</p>
                   </section>
                 )}
                 
                 {result.interpretation.diagnosis && (
                   <section className="glass-card p-6 bg-blue-50">
-                    <h3 className="text-lg font-medium mb-3 text-blue-900">Provisional Diagnosis</h3>
+                    <h3 className="text-lg font-medium mb-3 text-blue-900 flex items-center gap-2">
+                      <Stethoscope className="h-5 w-5" />
+                      Provisional Diagnosis
+                    </h3>
                     <p className="text-sm whitespace-pre-wrap text-blue-800">{result.interpretation.diagnosis}</p>
                     <p className="text-xs mt-3 opacity-70">Note: This is a provisional clinical impression. Clinical correlation and further evaluation are advised.</p>
                   </section>
@@ -522,16 +575,20 @@ export default function Home() {
             {/* Raw JSON Toggle */}
             <section className="glass-card p-6">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-medium">Detailed Data</h3>
+                <h3 className="text-lg font-medium flex items-center gap-2">
+                  <Info className="h-5 w-5 text-gray-600" />
+                  Detailed Data
+                </h3>
                 <button 
                   onClick={() => setShowRaw(!showRaw)}
-                  className="text-sm underline"
+                  className="text-sm underline flex items-center gap-1.5 hover:text-blue-600 transition-colors"
                 >
+                  {showRaw ? <XCircle className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   {showRaw ? "Hide" : "Show"} Raw JSON
                 </button>
               </div>
               {showRaw && (
-                <pre className="text-xs whitespace-pre-wrap overflow-auto max-h-96 p-3 bg-gray-50 rounded">
+                <pre className="text-xs whitespace-pre-wrap overflow-auto max-h-96 p-3 bg-gray-50 rounded font-mono">
                   {JSON.stringify(result, null, 2)}
                 </pre>
               )}
@@ -548,8 +605,9 @@ export default function Home() {
                   a.download = `baropodometry-${analysisMode}-${new Date().toISOString()}.json`;
                   a.click();
                 }}
-                className="btn-primary"
+                className="btn-primary flex items-center gap-2"
               >
+                <Download className="h-4 w-4" />
                 Export JSON
               </button>
             </div>
@@ -564,17 +622,30 @@ export default function Home() {
   );
 }
 
-function Uploader({ label, file, onPick }: { label: string; file?: File; onPick: (f?: File) => void }) {
+function Uploader({ label, icon, file, onPick }: { 
+  label: string; 
+  icon?: React.ReactNode;
+  file?: File; 
+  onPick: (f?: File) => void 
+}) {
   return (
-    <label className="flex flex-col gap-2">
+    <label className="flex flex-col gap-2 cursor-pointer group">
       <span className="text-sm font-medium flex items-center justify-between">
-        {label}
-        {file && <span className="text-xs opacity-60">{file.name}</span>}
+        <span className="flex items-center gap-2">
+          {icon}
+          {label}
+        </span>
+        {file && (
+          <span className="text-xs opacity-60 flex items-center gap-1">
+            <CheckCircle2 className="h-3 w-3 text-green-600" />
+            {file.name}
+          </span>
+        )}
       </span>
       <input
         type="file"
         accept="application/pdf"
-        className="block w-full rounded-lg border border-[color:var(--muted)] bg-white/60 p-2 text-sm"
+        className="block w-full rounded-lg border border-[color:var(--muted)] bg-white/60 p-2 text-sm group-hover:border-blue-300 transition-colors"
         onChange={(e) => onPick(e.target.files?.[0] || undefined)}
       />
     </label>
