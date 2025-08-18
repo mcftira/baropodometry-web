@@ -201,7 +201,7 @@ Return a structured JSON response as per your instructions.`,
         while (runStatus.status !== 'completed' && runStatus.status !== 'failed' && attempts < maxAttempts) {
           await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
           
-          runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
+          runStatus = await openai.beta.threads.runs.retrieve(thread.id, runStatus.id);
           
           // Send status updates
           if (runStatus.status === 'in_progress') {
