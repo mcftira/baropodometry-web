@@ -30,8 +30,8 @@ export function getDefaultSettings() {
     apiKey: getDefaultApiKey(),
     useAssistants: true, // Default to using Assistants API
     vectorStoreId: process.env.VECTOR_STORE_ID || "vs_688ced7042548191997d956b277fd0e0",
-    assistantIdComparison: process.env.ASSISTANT_ID_COMPARISON || "asst_o9ByF9wHBkd3O4rtEDXOmDNl",
-    assistantIdNormal: process.env.ASSISTANT_ID_NORMAL || "asst_dLBGE1R15xCrrPnglG5rh1Fq",
+    assistantIdComparison: process.env.ASSISTANT_ID_COMPARISON || "asst_tAEYGOaIi0JnecQ7vR8cUHEu",
+    assistantIdNormal: process.env.ASSISTANT_ID_NORMAL || "asst_p3qxruE0OaAWibpwL8aacjZW",
     model: "gpt-4o",
     language: "English" as const
   };

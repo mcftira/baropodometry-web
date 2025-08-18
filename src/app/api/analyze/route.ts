@@ -29,45 +29,53 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Convert PDFs to base64 for processing
-    const [neutralBuffer, closedBuffer, cottonBuffer] = await Promise.all([
-      neutral.arrayBuffer(),
-      closed.arrayBuffer(),
-      cotton.arrayBuffer()
-    ]);
-
-    const neutralB64 = Buffer.from(neutralBuffer).toString('base64');
-    const closedB64 = Buffer.from(closedBuffer).toString('base64');
-    const cottonB64 = Buffer.from(cottonBuffer).toString('base64');
-
     // Call OpenAI Assistant API
     const { OpenAI } = await import("openai");
     const openai = new OpenAI({ apiKey: settings.apiKey });
 
-    // Create thread
-    const thread = await openai.beta.threads.create();
+    // Upload PDFs as files for the Assistant
+    console.log("Uploading PDF files to OpenAI...");
+    
+    const [neutralFile, closedFile, cottonFile] = await Promise.all([
+      openai.files.create({
+        file: neutral,
+        purpose: "assistants"
+      }),
+      openai.files.create({
+        file: closed,
+        purpose: "assistants"
+      }),
+      openai.files.create({
+        file: cotton,
+        purpose: "assistants"
+      })
+    ]);
 
-    // Build message content
-    const messageContent = `
-Please analyze these 3 PDF reports (one per stage):
+    console.log("Files uploaded:", {
+      neutral: neutralFile.id,
+      closed: closedFile.id,
+      cotton: cottonFile.id
+    });
 
-1. NEUTRAL stage PDF (base64): ${neutralB64.substring(0, 100)}... [truncated for processing]
-2. CLOSED EYES stage PDF (base64): ${closedB64.substring(0, 100)}... [truncated for processing]  
-3. COTTON ROLLS stage PDF (base64): ${cottonB64.substring(0, 100)}... [truncated for processing]
-
-Extract metrics from each stage and compute comparisons (Romberg = Closed Eyes / Neutral, Cotton Effect = Cotton Rolls / Closed Eyes).
-
-Return a JSON object with stages data and comparisons.
-`;
-
-    // Add message to thread
-    await openai.beta.threads.messages.create(
-      thread.id,
-      {
+    // Create thread with the files attached
+    const thread = await openai.beta.threads.create({
+      messages: [{
         role: "user",
-        content: messageContent
-      }
-    );
+        content: `Please analyze these 3 PDF reports:
+1. NEUTRAL stage PDF
+2. CLOSED EYES stage PDF  
+3. COTTON ROLLS stage PDF
+
+Extract all visible metrics from tables, graphs, and visual elements. ${mode === "comparison" ? "Compute Romberg and Cotton Effect comparisons." : "Provide detailed stage analysis with clinical interpretation."}
+
+Return a structured JSON response as per your instructions.`,
+        attachments: [
+          { file_id: neutralFile.id, tools: [{ type: "file_search" }] },
+          { file_id: closedFile.id, tools: [{ type: "file_search" }] },
+          { file_id: cottonFile.id, tools: [{ type: "file_search" }] }
+        ]
+      }]
+    });
 
     // Run assistant based on mode
     const assistantId = mode === "comparison" 
