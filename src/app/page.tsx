@@ -46,6 +46,7 @@ export default function Home() {
   const [files, setFiles] = useState<Partial<Record<Stage, File>>>({});
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
+  const [statusMessages, setStatusMessages] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [showRaw, setShowRaw] = useState(false);
@@ -61,7 +62,8 @@ export default function Home() {
     setError(null);
     setResult(null);
     setAnalysisMode(mode);
-    setProgress("Uploading PDFs...");
+    setStatusMessages([]);
+    setProgress("Initializing...");
     
     try {
       const form = new FormData();
@@ -73,53 +75,75 @@ export default function Home() {
       // Add analysis mode to form data
       form.append("mode", mode);
       
-      setProgress(
-        mode === "comparison" 
-          ? "Processing comparison analysis (Romberg & Cotton Effect)..." 
-          : "Processing stage metrics extraction..."
-      );
+      // Use streaming API
+      const response = await fetch("/api/analyze-stream", { 
+        method: "POST", 
+        body: form 
+      });
       
-      const res = await fetch("/api/analyze", { method: "POST", body: form });
-      const data = await res.json();
-      
-      if (!res.ok) {
-        // Parse specific error types
-        let errorMessage = data.error || `HTTP ${res.status}`;
-        
-        // Check for rate limit error
-        if (errorMessage.includes("rate_limit_exceeded")) {
-          const match = errorMessage.match(/Please try again in ([\d.]+)s/);
-          const seconds = match ? match[1] : "a few seconds";
-          errorMessage = `⏱️ Rate limit exceeded. Please wait ${seconds} seconds and try again. Consider switching to GPT-4o Mini in Settings for higher limits.`;
-        }
-        // Check for assistant not found
-        else if (errorMessage.includes("No assistant found") || errorMessage.includes("asst_")) {
-          errorMessage = `🔧 Assistant configuration error. Please check your Assistant IDs in Settings or recreate assistants.`;
-        }
-        // Check for API key error
-        else if (errorMessage.includes("API key") || errorMessage.includes("Incorrect API key")) {
-          errorMessage = `🔑 Invalid API key. Please check your OpenAI API key in Settings.`;
-        }
-        // Check for file upload error
-        else if (errorMessage.includes("Failed to upload")) {
-          errorMessage = `📁 Failed to upload PDF files. Please try again or check if PDFs are valid.`;
-        }
-        
-        throw new Error(errorMessage);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
       }
       
-      setProgress("Parsing results...");
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
       
-      if (data.ok && data.data) {
-        setResult(data.data);
-        setProgress("");
-      } else {
-        throw new Error(data.error || "Invalid response");
+      if (!reader) {
+        throw new Error("No response body");
+      }
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) break;
+        
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              
+              if (data.type === 'status') {
+                setProgress(data.message);
+                setStatusMessages(prev => [...prev, data.message]);
+              } else if (data.type === 'complete') {
+                setResult(data.data);
+                setProgress("");
+                setStatusMessages([]);
+              } else if (data.type === 'error') {
+                // Parse specific error types
+                let errorMessage = data.message;
+                
+                if (errorMessage.includes("rate_limit_exceeded")) {
+                  const match = errorMessage.match(/Please try again in ([\d.]+)s/);
+                  const seconds = match ? match[1] : "a few seconds";
+                  errorMessage = `⏱️ Rate limit exceeded. Please wait ${seconds} seconds and try again. Consider switching to GPT-4o Mini in Settings for higher limits.`;
+                } else if (errorMessage.includes("No assistant found") || errorMessage.includes("asst_")) {
+                  errorMessage = `🔧 Assistant configuration error. Please check your Assistant IDs in Settings or recreate assistants.`;
+                } else if (errorMessage.includes("API key") || errorMessage.includes("Incorrect API key")) {
+                  errorMessage = `🔑 Invalid API key. Please check your OpenAI API key in Settings.`;
+                } else if (errorMessage.includes("Failed to upload")) {
+                  errorMessage = `📁 Failed to upload PDF files. Please try again or check if PDFs are valid.`;
+                }
+                
+                throw new Error(errorMessage);
+              }
+            } catch (e) {
+              if (e instanceof Error && e.message) {
+                throw e;
+              }
+              // Ignore parse errors for incomplete chunks
+            }
+          }
+        }
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Error";
       setError(msg);
       setProgress("");
+      setStatusMessages([]);
     } finally {
       setBusy(false);
     }
@@ -216,30 +240,53 @@ export default function Home() {
                 <div className="space-y-3">
                   <div className="flex items-center gap-3">
                     <div className="animate-spin h-5 w-5 border-2 border-[color:var(--brand)] border-t-transparent rounded-full"></div>
-                    <span className="text-sm">{progress}</span>
+                    <span className="text-sm font-medium">{progress}</span>
                   </div>
-                  <div className="text-xs opacity-60">
-                    {analysisMode === "comparison" ? (
-                      <>
-                        The Comparison Expert is analyzing your PDFs:
-                        <ul className="list-disc list-inside mt-2 space-y-1">
-                          <li>Computing Romberg ratio (Closed Eyes / Neutral)</li>
-                          <li>Computing Cotton Effect (Cotton Rolls / Closed Eyes)</li>
-                          <li>Evaluating stability changes</li>
-                          <li>Generating clinical interpretation</li>
-                        </ul>
-                      </>
-                    ) : (
-                      <>
-                        The Analysis Expert is extracting metrics:
-                        <ul className="list-disc list-inside mt-2 space-y-1">
-                          <li>Reading Global Synthesis values</li>
-                          <li>Extracting L/S Ratio, Velocity, Area</li>
-                          <li>Analyzing stabilograms and heatmaps</li>
-                          <li>Identifying key postural metrics</li>
-                        </ul>
-                      </>
-                    )}
+                  
+                  {statusMessages.length > 0 && (
+                    <div className="mt-4 p-3 bg-gray-50 rounded-lg max-h-48 overflow-y-auto">
+                      <div className="text-xs font-mono space-y-1">
+                        {statusMessages.slice(-10).map((msg, idx) => (
+                          <div key={idx} className="flex items-start gap-2">
+                            <span className="opacity-40">{String(statusMessages.length - 10 + idx + 1).padStart(2, '0')}</span>
+                            <span className={msg.includes('✅') ? 'text-green-600' : msg.includes('⚠️') || msg.includes('❌') ? 'text-red-600' : 'text-gray-700'}>
+                              {msg}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="text-xs opacity-60 mt-3">
+                    <details>
+                      <summary className="cursor-pointer hover:opacity-80">What's happening?</summary>
+                      <div className="mt-2 pl-4">
+                        {analysisMode === "comparison" ? (
+                          <>
+                            The Comparison Expert is:
+                            <ul className="list-disc list-inside mt-1 space-y-0.5">
+                              <li>Computing Romberg ratio (Closed Eyes / Neutral)</li>
+                              <li>Computing Cotton Effect (Cotton Rolls / Closed Eyes)</li>
+                              <li>Evaluating stability changes</li>
+                              <li>Searching medical literature for citations</li>
+                              <li>Generating clinical interpretation</li>
+                            </ul>
+                          </>
+                        ) : (
+                          <>
+                            The Analysis Expert is:
+                            <ul className="list-disc list-inside mt-1 space-y-0.5">
+                              <li>Reading Global Synthesis values</li>
+                              <li>Extracting L/S Ratio, Velocity, Area</li>
+                              <li>Analyzing stabilograms and heatmaps</li>
+                              <li>Searching knowledge base for references</li>
+                              <li>Identifying key postural metrics</li>
+                            </ul>
+                          </>
+                        )}
+                      </div>
+                    </details>
                   </div>
                 </div>
               ) : (
