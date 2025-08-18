@@ -40,7 +40,10 @@ export default function Home() {
       <header className="px-6 py-4 brand-gradient border-b border-[color:var(--muted)]">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <h1 className="text-2xl font-semibold tracking-tight">Baropodometry Analyzer Web</h1>
-          <div className="text-sm opacity-80">Modern Medical UI · 2025</div>
+          <div className="text-sm opacity-80 flex items-center gap-3">
+            <a href="/settings" className="underline underline-offset-4">Settings</a>
+            <span>Modern Medical UI · 2025</span>
+          </div>
         </div>
       </header>
 
