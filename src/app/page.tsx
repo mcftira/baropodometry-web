@@ -89,34 +89,36 @@ export default function Home() {
     
     // Set dummy status messages for carousel
     const dummyMessages = mode === "comparison" ? [
-      "🔄 Initializing comparison analysis",
-      "📤 Uploading PDF files",
-      "✅ PDFs validated successfully",
-      "🧵 Creating analysis thread",
-      "🤖 Engaging Comparison Expert",
-      "📊 Extracting Neutral stage metrics",
-      "👁️ Analyzing Closed Eyes data",
-      "🦷 Processing Cotton Rolls measurements",
-      "📈 Computing Romberg ratio",
-      "📈 Computing Cotton Effect",
-      "📚 Searching medical literature",
-      "✍️ Generating clinical interpretation",
-      "✅ Analysis complete"
+      "Initializing comparison analysis",
+      "Uploading PDF files to server",
+      "Validating PDF structure",
+      "Creating analysis thread",
+      "Engaging Comparison Expert Assistant",
+      "Extracting Neutral stage metrics",
+      "Analyzing Closed Eyes data",
+      "Processing Cotton Rolls measurements",
+      "Computing Romberg ratio (Closed Eyes/Neutral)",
+      "Computing Cotton Effect (Cotton Rolls/Closed Eyes)",
+      "Searching medical literature database",
+      "Generating clinical interpretation",
+      "Finalizing analysis report"
     ] : [
-      "🔄 Initializing stage analysis",
-      "📤 Uploading PDF files",
-      "✅ PDFs validated successfully",
-      "🧵 Creating analysis thread",
-      "🤖 Engaging Analysis Expert",
-      "📊 Reading Global Synthesis values",
-      "📏 Extracting L/S Ratio metrics",
-      "🎯 Analyzing velocity parameters",
-      "📐 Computing ellipse areas",
-      "🔍 Processing stabilograms",
-      "🌡️ Analyzing heatmaps",
-      "📚 Searching knowledge base",
-      "✍️ Generating diagnosis",
-      "✅ Analysis complete"
+      "Initializing stage analysis",
+      "Uploading PDF files to server",
+      "Validating PDF structure",
+      "Creating analysis thread",
+      "Engaging Analysis Expert Assistant",
+      "Reading Global Synthesis values",
+      "Extracting L/S Ratio and foot pressures",
+      "Analyzing COP velocity parameters",
+      "Computing ellipse areas and ratios",
+      "Processing foot stabilograms",
+      "Analyzing Sway Density curves",
+      "Extracting FFT frequency data",
+      "Processing 3D load distribution",
+      "Reading Postural Index Dashboard",
+      "Searching knowledge base for references",
+      "Generating clinical diagnosis"
     ];
     
     setStatusMessages(dummyMessages);
@@ -320,14 +322,14 @@ export default function Home() {
                           {(() => {
                             const msg = statusMessages[currentMessageIndex];
                             const getIcon = () => {
-                              if (msg.includes('✅') || msg.includes('complete')) return <CheckCircle2 className="h-6 w-6 text-green-600" />;
-                              if (msg.includes('📤') || msg.includes('Upload')) return <Upload className="h-6 w-6 text-blue-600" />;
-                              if (msg.includes('📄') || msg.includes('PDF')) return <FileText className="h-6 w-6 text-orange-600" />;
-                              if (msg.includes('🤖') || msg.includes('AI') || msg.includes('Assistant')) return <Brain className="h-6 w-6 text-purple-600" />;
-                              if (msg.includes('🔍') || msg.includes('Analyz')) return <Search className="h-6 w-6 text-indigo-600" />;
-                              if (msg.includes('📊') || msg.includes('metric')) return <Activity className="h-6 w-6 text-cyan-600" />;
-                              if (msg.includes('👁') || msg.includes('Eyes')) return <Eye className="h-6 w-6 text-teal-600" />;
-                              if (msg.includes('⚙️') || msg.includes('model')) return <Package className="h-6 w-6 text-gray-600" />;
+                              if (msg.toLowerCase().includes('final') || msg.toLowerCase().includes('complet')) return <CheckCircle2 className="h-6 w-6 text-green-600" />;
+                              if (msg.toLowerCase().includes('upload')) return <Upload className="h-6 w-6 text-blue-600" />;
+                              if (msg.toLowerCase().includes('pdf') || msg.toLowerCase().includes('validat')) return <FileText className="h-6 w-6 text-orange-600" />;
+                              if (msg.toLowerCase().includes('assistant') || msg.toLowerCase().includes('expert')) return <Brain className="h-6 w-6 text-purple-600" />;
+                              if (msg.toLowerCase().includes('analyz') || msg.toLowerCase().includes('process')) return <Search className="h-6 w-6 text-indigo-600" />;
+                              if (msg.toLowerCase().includes('metric') || msg.toLowerCase().includes('extract')) return <Activity className="h-6 w-6 text-cyan-600" />;
+                              if (msg.toLowerCase().includes('eyes') || msg.toLowerCase().includes('closed')) return <Eye className="h-6 w-6 text-teal-600" />;
+                              if (msg.toLowerCase().includes('comput') || msg.toLowerCase().includes('ratio')) return <Package className="h-6 w-6 text-gray-600" />;
                               return <FileCheck className="h-6 w-6 text-blue-600" />;
                             };
                             
@@ -336,7 +338,7 @@ export default function Home() {
                                 {getIcon()}
                                 <div className="flex-1">
                                   <p className="text-sm font-medium text-gray-800">
-                                    {msg.replace(/[✅❌⚠️🔄📤📄🤖🔍📊👁⚙️🦷]/g, '').trim()}
+                                    {msg}
                                   </p>
                                   <p className="text-xs text-gray-500 mt-0.5">
                                     {new Date().toLocaleTimeString()}
