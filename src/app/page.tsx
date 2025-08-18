@@ -2,6 +2,7 @@
 import { useState } from "react";
 
 type Stage = "neutral" | "closed_eyes" | "cotton_rolls";
+type AnalysisMode = "normal" | "comparison";
 
 interface StageData {
   textMetrics?: Record<string, unknown>;
@@ -10,9 +11,11 @@ interface StageData {
 
 interface ComparisonData {
   ratio?: number;
-  length?: { ratio?: number };
-  area?: { ratio?: number };
-  velocity?: { ratio?: number };
+  deltaPct?: number;
+  direction?: "improvement" | "worsening" | "neutral";
+  length?: { ratio?: number; deltaPct?: number; direction?: string };
+  area?: { ratio?: number; deltaPct?: number; direction?: string };
+  velocity?: { ratio?: number; deltaPct?: number; direction?: string };
 }
 
 interface AnalysisResult {
@@ -37,16 +40,18 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [showRaw, setShowRaw] = useState(false);
+  const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("normal");
 
   function onPick(stage: Stage, f?: File) {
     setFiles((prev) => ({ ...prev, [stage]: f }));
     setError(null);
   }
 
-  async function onSubmit() {
+  async function onSubmit(mode: AnalysisMode) {
     setBusy(true);
     setError(null);
     setResult(null);
+    setAnalysisMode(mode);
     setProgress("Uploading PDFs...");
     
     try {
@@ -56,7 +61,14 @@ export default function Home() {
         if (f) form.append(s, f);
       });
       
-      setProgress("Processing with AI Assistant (this may take 20-30 seconds)...");
+      // Add analysis mode to form data
+      form.append("mode", mode);
+      
+      setProgress(
+        mode === "comparison" 
+          ? "Processing comparison analysis (Romberg & Cotton Effect)..." 
+          : "Processing stage metrics extraction..."
+      );
       
       const res = await fetch("/api/analyze", { method: "POST", body: form });
       if (!res.ok) {
@@ -118,18 +130,35 @@ export default function Home() {
                   onPick={(f) => onPick("cotton_rolls", f)} 
                 />
               </div>
-              <div className="mt-5 flex gap-3 items-center">
-                <button 
-                  className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed" 
-                  onClick={onSubmit} 
-                  disabled={busy || !hasAllFiles}
-                >
-                  {busy ? "Processing..." : "Start analysis"}
-                </button>
-                {!hasAllFiles && !busy && (
-                  <span className="text-sm text-orange-600">Please upload all 3 PDFs</span>
-                )}
+              
+              <div className="mt-6 space-y-3">
+                <h3 className="text-sm font-medium opacity-80">Choose Analysis Type:</h3>
+                <div className="flex gap-3">
+                  <button 
+                    className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex-1" 
+                    onClick={() => onSubmit("normal")} 
+                    disabled={busy || !hasAllFiles}
+                  >
+                    {busy && analysisMode === "normal" ? "Processing..." : "Stage Analysis"}
+                  </button>
+                  <button 
+                    className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed flex-1" 
+                    onClick={() => onSubmit("comparison")} 
+                    disabled={busy || !hasAllFiles}
+                  >
+                    {busy && analysisMode === "comparison" ? "Processing..." : "Comparison Analysis"}
+                  </button>
+                </div>
+                <div className="text-xs opacity-60">
+                  <p><strong>Stage Analysis:</strong> Extract metrics from each stage</p>
+                  <p><strong>Comparison Analysis:</strong> Calculate Romberg & Cotton Effects</p>
+                </div>
               </div>
+              
+              {!hasAllFiles && !busy && (
+                <div className="mt-3 text-sm text-orange-600">Please upload all 3 PDFs</div>
+              )}
+              
               {error && (
                 <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700">
                   <strong>Error:</strong> {error}
@@ -146,18 +175,32 @@ export default function Home() {
                     <span className="text-sm">{progress}</span>
                   </div>
                   <div className="text-xs opacity-60">
-                    The AI Assistant is analyzing your PDFs. This involves:
-                    <ul className="list-disc list-inside mt-2 space-y-1">
-                      <li>Extracting text and visual data from each PDF</li>
-                      <li>Identifying key metrics (L/S Ratio, Velocity, Area, etc.)</li>
-                      <li>Computing Romberg and Cotton Effect comparisons</li>
-                      <li>Generating clinical insights</li>
-                    </ul>
+                    {analysisMode === "comparison" ? (
+                      <>
+                        The Comparison Expert is analyzing your PDFs:
+                        <ul className="list-disc list-inside mt-2 space-y-1">
+                          <li>Computing Romberg ratio (Closed Eyes / Neutral)</li>
+                          <li>Computing Cotton Effect (Cotton Rolls / Closed Eyes)</li>
+                          <li>Evaluating stability changes</li>
+                          <li>Generating clinical interpretation</li>
+                        </ul>
+                      </>
+                    ) : (
+                      <>
+                        The Analysis Expert is extracting metrics:
+                        <ul className="list-disc list-inside mt-2 space-y-1">
+                          <li>Reading Global Synthesis values</li>
+                          <li>Extracting L/S Ratio, Velocity, Area</li>
+                          <li>Analyzing stabilograms and heatmaps</li>
+                          <li>Identifying key postural metrics</li>
+                        </ul>
+                      </>
+                    )}
                   </div>
                 </div>
               ) : (
                 <div className="text-sm opacity-60">
-                  Ready to analyze. Upload all 3 PDF reports and click &quot;Start analysis&quot;.
+                  Ready to analyze. Upload all 3 PDF reports and choose analysis type.
                 </div>
               )}
             </section>
@@ -165,7 +208,9 @@ export default function Home() {
         ) : (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-semibold">Analysis Results</h2>
+              <h2 className="text-2xl font-semibold">
+                {analysisMode === "comparison" ? "Comparison Analysis Results" : "Stage Analysis Results"}
+              </h2>
               <button 
                 onClick={() => { setResult(null); setFiles({}); }}
                 className="text-sm underline"
@@ -174,27 +219,57 @@ export default function Home() {
               </button>
             </div>
 
-            {/* KPI Cards */}
-            <div className="grid gap-4 md:grid-cols-3">
-              <KPICard 
-                title="Romberg Effect"
-                subtitle="Closed Eyes / Neutral"
-                value={result.comparisons?.romberg}
-                color="blue"
-              />
-              <KPICard 
-                title="Cotton Rolls Effect"
-                subtitle="Cotton Rolls / Closed Eyes"
-                value={result.comparisons?.cottonEffect}
-                color="green"
-              />
-              <KPICard 
-                title="Confidence"
-                subtitle="Analysis confidence"
-                value={result.comparisons?.confidence ? `${(result.comparisons.confidence * 100).toFixed(0)}%` : "N/A"}
-                color="purple"
-              />
-            </div>
+            {/* KPI Cards - Only show for comparison mode */}
+            {analysisMode === "comparison" && result.comparisons && (
+              <div className="grid gap-4 md:grid-cols-3">
+                <KPICard 
+                  title="Romberg Effect"
+                  subtitle="Closed Eyes / Neutral"
+                  value={result.comparisons.romberg}
+                  color="blue"
+                />
+                <KPICard 
+                  title="Cotton Rolls Effect"
+                  subtitle="Cotton Rolls / Closed Eyes"
+                  value={result.comparisons.cottonEffect}
+                  color="green"
+                />
+                <KPICard 
+                  title="Confidence"
+                  subtitle="Analysis confidence"
+                  value={result.comparisons.confidence ? `${(result.comparisons.confidence * 100).toFixed(0)}%` : "N/A"}
+                  color="purple"
+                />
+              </div>
+            )}
+
+            {/* Stage Metrics - Show for normal mode */}
+            {analysisMode === "normal" && result.stages && (
+              <div className="grid gap-4 md:grid-cols-3">
+                {(["neutral", "closed_eyes", "cotton_rolls"] as const).map((stage) => (
+                  <div key={stage} className="glass-card p-4">
+                    <h3 className="text-sm font-medium opacity-80 mb-2">
+                      {stage === "neutral" ? "Neutral" : 
+                       stage === "closed_eyes" ? "Closed Eyes" : "Cotton Rolls"}
+                    </h3>
+                    <div className="text-xs space-y-1">
+                      {result.stages?.[stage] ? (
+                        <>
+                          <p>✓ Data extracted</p>
+                          {Object.keys(result.stages[stage] as StageData).length > 0 && (
+                            <p className="opacity-60">
+                              {Object.keys(result.stages[stage] as StageData).join(", ")}
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="opacity-60">No data</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Summary */}
             {result.comparisons?.summary && (
@@ -230,7 +305,7 @@ export default function Home() {
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement("a");
                   a.href = url;
-                  a.download = `baropodometry-analysis-${new Date().toISOString()}.json`;
+                  a.download = `baropodometry-${analysisMode}-${new Date().toISOString()}.json`;
                   a.click();
                 }}
                 className="btn-primary"
@@ -280,6 +355,8 @@ function KPICard({ title, subtitle, value, color }: {
       // Try to extract meaningful data
       if (v.ratio) return `${v.ratio.toFixed(2)}x`;
       if (v.length?.ratio) return `L: ${v.length.ratio?.toFixed(2)}x`;
+      if (v.area?.ratio) return `A: ${v.area.ratio?.toFixed(2)}x`;
+      if (v.velocity?.ratio) return `V: ${v.velocity.ratio?.toFixed(2)}x`;
       return "See details";
     }
     return "N/A";

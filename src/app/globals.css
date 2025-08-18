@@ -60,5 +60,14 @@ body {
   @apply inline-flex items-center justify-center rounded-lg px-5 py-2.5 font-medium text-white;
   background-color: var(--brand);
 }
+
+.btn-secondary {
+  @apply inline-flex items-center justify-center rounded-lg px-5 py-2.5 font-medium text-white;
+  background-color: #6b7280;
+}
+
+.btn-secondary:hover {
+  background-color: #4b5563;
+}
 .btn-primary:hover { background-color: color-mix(in oklab, var(--brand) 88%, black); }
 .btn-primary:disabled { opacity: .5; cursor: not-allowed; }

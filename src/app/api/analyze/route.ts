@@ -10,6 +10,7 @@ export async function POST(req: NextRequest) {
     const neutral = form.get("neutral") as File | null;
     const closed = form.get("closed_eyes") as File | null;
     const cotton = form.get("cotton_rolls") as File | null;
+    const mode = form.get("mode") as string | null; // "normal" or "comparison"
 
     if (!(neutral && closed && cotton)) {
       return new Response(JSON.stringify({ ok: false, error: "Missing PDF(s). 3 stages required." }), {
@@ -68,8 +69,11 @@ Return a JSON object with stages data and comparisons.
       }
     );
 
-    // Run assistant
-    const assistantId = settings.assistantIdNormal;
+    // Run assistant based on mode
+    const assistantId = mode === "comparison" 
+      ? settings.assistantIdComparison 
+      : settings.assistantIdNormal;
+    
     const run = await openai.beta.threads.runs.createAndPoll(
       thread.id,
       { 
