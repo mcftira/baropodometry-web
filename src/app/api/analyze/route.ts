@@ -136,10 +136,10 @@ Return a structured JSON response as per your instructions.`,
       // Clean up uploaded files
       try {
         await Promise.all([
-          openai.files.del(neutralFile.id),
-          openai.files.del(closedFile.id),
-          openai.files.del(cottonFile.id)
-        ]);
+          openai.files.del ? openai.files.del(neutralFile.id) : openai.files.delete?.(neutralFile.id),
+          openai.files.del ? openai.files.del(closedFile.id) : openai.files.delete?.(closedFile.id),
+          openai.files.del ? openai.files.del(cottonFile.id) : openai.files.delete?.(cottonFile.id)
+        ].filter(Boolean));
       } catch (cleanupError) {
         console.error("Error cleaning up files:", cleanupError);
       }
@@ -187,14 +187,16 @@ Return a structured JSON response as per your instructions.`,
         }
         
         // Clean up uploaded files after successful processing
+        // Note: OpenAI SDK v4 uses 'delete' instead of 'del'
         try {
           await Promise.all([
-            openai.files.del(neutralFile.id),
-            openai.files.del(closedFile.id),
-            openai.files.del(cottonFile.id)
-          ]);
+            openai.files.del ? openai.files.del(neutralFile.id) : openai.files.delete?.(neutralFile.id),
+            openai.files.del ? openai.files.del(closedFile.id) : openai.files.delete?.(closedFile.id),
+            openai.files.del ? openai.files.del(cottonFile.id) : openai.files.delete?.(cottonFile.id)
+          ].filter(Boolean));
         } catch (cleanupError) {
           console.error("Error cleaning up files:", cleanupError);
+          // Not critical, continue
         }
         
         return new Response(JSON.stringify({ ok: true, data: result }), {
