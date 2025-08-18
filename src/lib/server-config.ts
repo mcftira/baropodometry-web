@@ -1,12 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
 
+// API key from environment or config
 export function getDefaultApiKey(): string | undefined {
-  // 1) Environment variable first (safe)
+  // 1) Environment variable first (set in .env.local)
+  
+  // 2) Environment variable second
   const envKey = process.env.OPENAI_API_KEY?.trim();
   if (envKey) return envKey;
 
-  // 2) Fallback: try to read ../Config/settings.json (desktop app config)
+  // 3) Fallback: try to read ../Config/settings.json (desktop app config)
   try {
     const cfgPath = path.resolve(process.cwd(), "..", "Config", "settings.json");
     if (fs.existsSync(cfgPath)) {
@@ -20,6 +23,18 @@ export function getDefaultApiKey(): string | undefined {
   }
 
   return undefined;
+}
+
+export function getDefaultSettings() {
+  return {
+    apiKey: getDefaultApiKey(),
+    useAssistants: true, // Default to using Assistants API
+    vectorStoreId: process.env.VECTOR_STORE_ID || "vs_FVJy8hCXvnQB2eP5HdDQJZRl",
+    assistantIdComparison: process.env.ASSISTANT_ID_COMPARISON || "asst_iGNqiAQ7JuvIYPC5m8Wxuk4t",
+    assistantIdNormal: process.env.ASSISTANT_ID_NORMAL || "asst_ITfLIZob9chdh16JmZwrKdQW",
+    model: "gpt-4o",
+    language: "English" as const
+  };
 }
 
 
