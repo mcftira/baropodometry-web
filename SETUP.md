@@ -24,3 +24,5 @@ Open http://localhost:3001 in your browser.
 - Automatic analysis using OpenAI Vision Assistant
 - JSON output with metrics and comparisons
 - Settings page for API configuration
+
+

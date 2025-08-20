@@ -25,15 +25,40 @@ export function getDefaultApiKey(): string | undefined {
   return undefined;
 }
 
+function readLocalConfig(): {
+  apiKey?: string;
+  model?: string;
+  language?: string;
+  vectorStoreId?: string;
+} {
+  try {
+    const cfgPath = path.resolve(process.cwd(), "..", "Config", "settings.json");
+    if (fs.existsSync(cfgPath)) {
+      const raw = fs.readFileSync(cfgPath, "utf-8");
+      const json = JSON.parse(raw);
+      return {
+        apiKey: json?.LLMConfig?.ApiKey,
+        model: json?.LLMConfig?.Model,
+        language: json?.Language,
+        vectorStoreId: json?.VectorStoreId
+      };
+    }
+  } catch {
+    // ignore
+  }
+  return {};
+}
+
 export function getDefaultSettings() {
+  const local = readLocalConfig();
+  const model = (process.env.MODEL?.trim() || local.model || "gpt-5") as "gpt-5" | "gpt-4o" | "gpt-4o-mini" | "gpt-4-turbo" | "gpt-3.5-turbo";
+  const language = (process.env.LANGUAGE?.trim() as "English" | "Hungarian") || (local.language as "English" | "Hungarian") || "English";
+  const vectorStoreId = process.env.VECTOR_STORE_ID || local.vectorStoreId || "vs_688ced7042548191997d956b277fd0e0"; // default clinic knowledge base
   return {
     apiKey: getDefaultApiKey(),
-    useAssistants: true, // Default to using Assistants API
-    vectorStoreId: process.env.VECTOR_STORE_ID || "vs_688ced7042548191997d956b277fd0e0",
-    assistantIdComparison: process.env.ASSISTANT_ID_COMPARISON || "asst_ITU9BNHxMMsJDI7LZCM8P7ir",
-    assistantIdNormal: process.env.ASSISTANT_ID_NORMAL || "asst_WocTzpXheuCvmcx9VYZLqeSb",
-    model: "gpt-4o-mini", // Changed to mini version for higher rate limits
-    language: "English" as const
+    model,
+    language,
+    vectorStoreId
   };
 }
 

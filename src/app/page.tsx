@@ -77,6 +77,9 @@ interface AnalysisResult {
     evidence_status?: "VALID" | "INVALID";
     refusal_reason?: string | null;
   };
+  // New dual-report fields for Responses API pipeline
+  extractionReportText?: string;
+  augmentedReportText?: string;
 }
 
 export default function Home() {
@@ -465,7 +468,7 @@ export default function Home() {
               </button>
             </div>
 
-            {/* KPI Cards - Only show for comparison mode */}
+            {/* KPI Cards - Only show for comparison mode (legacy JSON result) */}
             {analysisMode === "comparison" && result.comparisons && (
               <div className="grid gap-4 md:grid-cols-3">
                 <KPICard 
@@ -489,7 +492,7 @@ export default function Home() {
               </div>
             )}
 
-            {/* Stage Metrics - Show for normal mode */}
+            {/* Stage Metrics - Show for normal mode (legacy JSON result) */}
             {analysisMode === "normal" && result.stages && (
               <div className="grid gap-4 md:grid-cols-3">
                 {(["neutral", "closed_eyes", "cotton_rolls"] as const).map((stage) => (
@@ -533,7 +536,7 @@ export default function Home() {
               </div>
             )}
 
-            {/* Summary for Comparison Mode */}
+            {/* Summary for Comparison Mode (legacy JSON result) */}
             {result.comparisons?.summary && (
               <section className="glass-card p-6">
                 <h3 className="text-lg font-medium mb-3">Clinical Summary</h3>
@@ -541,9 +544,26 @@ export default function Home() {
               </section>
             )}
 
-            {/* Clinical Report for Stage Analysis Mode */}
+            {/* Clinical Report for Stage Analysis Mode (legacy JSON result) */}
             {analysisMode === "normal" && result.interpretation && (
               <div className="space-y-4">
+            {/* New dual text reports from Responses API */}
+            {(result.extractionReportText || result.augmentedReportText) && (
+              <div className="grid gap-4 md:grid-cols-2">
+                {result.extractionReportText && (
+                  <section className="glass-card p-6">
+                    <h3 className="text-lg font-medium mb-3">Primary Extraction Report</h3>
+                    <pre className="text-sm whitespace-pre-wrap">{result.extractionReportText}</pre>
+                  </section>
+                )}
+                {result.augmentedReportText && (
+                  <section className="glass-card p-6">
+                    <h3 className="text-lg font-medium mb-3">Knowledge-Augmented Report</h3>
+                    <pre className="text-sm whitespace-pre-wrap">{result.augmentedReportText}</pre>
+                  </section>
+                )}
+              </div>
+            )}
                 {result.interpretation.vision_findings && (
                   <section className="glass-card p-6">
                     <h3 className="text-lg font-medium mb-3 flex items-center gap-2">
@@ -635,6 +655,23 @@ export default function Home() {
                 <Download className="h-4 w-4" />
                 Export JSON
               </button>
+              {(result.extractionReportText || result.augmentedReportText) && (
+                <button 
+                  onClick={() => {
+                    const text = `Primary Extraction Report\n\n${result.extractionReportText || ""}\n\n---\n\nKnowledge-Augmented Report\n\n${result.augmentedReportText || ""}`;
+                    const blob = new Blob([text], { type: "text/plain" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `baropodometry-${analysisMode}-${new Date().toISOString()}.txt`;
+                    a.click();
+                  }}
+                  className="btn-secondary flex items-center gap-2"
+                >
+                  <Download className="h-4 w-4" />
+                  Export Reports (TXT)
+                </button>
+              )}
             </div>
           </div>
         )}
