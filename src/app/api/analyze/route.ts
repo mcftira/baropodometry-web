@@ -389,135 +389,199 @@ const EXTRACTION_SCHEMA = {
 const AGENT1_PROMPT = `
 Prompt 1 — Extraction & Pre-Analysis (JSON only)
 
-Role
+ROLE
 You are a baropodometric/stabilometric extraction agent.
 
-Inputs
-You receive TWO input types to process SEQUENTIALLY:
-1. **PDFs (PARSE FIRST for all text/table data)**: Three PDF reports for the same subject
-   - A = Neutral / Eyes Open
-   - B = Eyes Closed  
-   - C = Eyes Closed + Cotton Rolls
-   - ACTION: Use PDF parser to extract ALL text, numbers, and tables from pages 1-8
-   - This gives you the complete raw data structure
+INPUTS (process SEQUENTIALLY)
+1) PDFs (PARSE FIRST for all text/table data)
+   • Same subject, three reports:
+     A = Neutral / Eyes Open
+     B = Closed Eyes
+     C = Closed Eyes + Cotton Rolls
+   • Use PDF text/OCR only to extract ALL numbers/tables on pages 1,2,3,4,5,8.
 
-2. **PNG Images (USE SECOND for visual elements only)**: High-resolution screenshots of pages 1, 2, 3, 4, 5, and 8
-   - ACTION: After PDF parsing, use images ONLY for visual interpretation
-   - Analyze: graphs, plots, stabilograms, FFT spectra, footprint heatmaps, sway patterns
-   - Do NOT attempt to extract numbers from images - you already have them from PDF
+2) PNG images (USE SECOND for visual interpretation ONLY)
+   • High-resolution screenshots of pages 1,2,3,4,5,8.
+   • Use ONLY for qualitative descriptions of plots/heatmaps (no numbers).
 
-MANDATORY Processing Order:
-- STEP 1: Parse PDFs to extract all text, tables, and numeric values
-- STEP 2: With data in hand, examine images for visual patterns and qualitative assessments
-- STEP 3: Combine PDF data with image interpretations for complete extraction
+MANDATORY ORDER
+STEP 1: Parse PDFs → capture all printed text/numbers/tables.
+STEP 2: Inspect images → add visual (qualitative) observations only.
+STEP 3: Merge into a single structured JSON.
 
-Scope
-Use ONLY pages 1, 2, 3, 4, 5, and 8. Ignore all other pages.
+SCOPE
+Use ONLY pages 1,2,3,4,5,8.
 
-CRITICAL: Process Reporting & Debugging
-Before generating the final JSON, include in your response:
-1. **PDF Parsing Phase**: Report what text/tables you extracted from PDFs (e.g., "PDF Parse: Extracted Test A Page 1 table with 15 global metrics...")
-2. **Image Analysis Phase**: Report visual interpretations from images (e.g., "Image Analysis: Test A Page 3 shows AP-dominant oscillations...")
-3. **Issues Encountered**: Report any problems finding specific data, unclear values, or ambiguous readings
-4. **Missing Data**: Explicitly state what you cannot find and why (e.g., "Cannot locate arch_type in PDF text - field not present")
-5. **Decision Rationale**: When making qualitative assessments (e.g., less_stable_foot, dominant_plane), explain your visual reasoning
-6. **Data Quality Notes**: Mention any concerns about PDF parsing accuracy or image clarity
+STRICT RULES
+• Extract ONLY what is printed on those pages. Do NOT guess or infer.
+• Preserve units; normalize decimals to dot (e.g., 11.57). Return numbers as JSON numbers.
+• Verbatim strings:
+  – patient.name and measure_condition must match exactly as printed (keep capitalization/diacritics).
+  – test_datetime_local is the exact printed string.
+• Radar axis labels must come from this whitelist ONLY:
+  ["Length","Area","Velocity","Ell. ratio","LFS","X medium","Y medium","Accel. AP"].
+  – If the figure shows Greek gamma “γ medium”, map it to "Y medium".
+• V.N. statuses: if only numeric V.N. ranges are printed (no “within/above/below”), set each "..._vn_status" = "not_printed".
+• Loads sanity check: if left_load_pct + right_load_pct is not within [98,102], set both to null.
+• Cross-page discrepancies:
+  – For any value printed on both Page-1 and Page-8 that differs:
+    * For L/R loads: if |diff| > 0.5% on either side → record a discrepancy and prefer Page-1.
+    * For other scalars: if |diff| > 1 unit → record a discrepancy and prefer Page-1.
+  – Record discrepancies under tests.<A|B|C>.discrepancies (see schema below).
+• Qualitative caution:
+  – Page-2 less_stable_foot ∈ {"left","right","tie","not_determinable"}.
+    Choose "left"/"right" ONLY when visibly different; otherwise "tie".
+  – Page-3 dominant_plane ∈ {"ML","AP","balanced","not_determinable"}.
+    Choose "ML"/"AP" ONLY when clearly dominant; otherwise "balanced".
+• Absolutely NO clinical interpretation or diagnosis.
 
-After this diagnostic section, provide the final JSON output as specified.
+DIAGNOSTIC REPORTING (before JSON)
+Provide these sections in plain text WITHOUT curly braces:
+1) PDF Parsing Phase — what tables/fields you captured by page.
+2) Image Analysis Phase — concise visual notes per page.
+3) Issues Encountered — any ambiguities/reading problems.
+4) Missing Data — fields not present and why.
+5) Decision Rationale — how you chose less_stable_foot / dominant_plane.
+6) Data Quality Notes — OCR clarity, decimal commas, etc.
 
-Strict rules
-- Extract ONLY what is printed on those pages. Do NOT guess or infer.
-- Preserve units, but normalize decimals to dot (e.g., 11.57). Return numbers as JSON numbers (not strings).
-- If a printed value/field is missing, set it to null and use "not_printed" for V.N. status fields or booleans where applicable.
-- Qualitative descriptions of plots are allowed (short, factual, no speculation).
-- Absolutely NO clinical interpretation or diagnosis.
+After diagnostics, output the JSON ONLY between the exact fence markers:
+<<<JSON_START>>>
+{ ... }
+<<<JSON_END>>>
 
-VISION TASKS & LAYOUT (constant)
-- Page 1 (Footprints + Globals):
-  • Read % loads, mean pressures, quadrant loads.
-  • Read COP mean (X,Y) with SD and V.N. flags; read ALL global metrics + V.N. flags.
-  • Patient name is in the top-left header; in same line with test date.
+PAGE LAYOUT & FIELDS
 
-- Page 2 (Per-foot tables + Foot stabilograms):
-  • Top: per-foot numerical table (Left/Right) — extract exactly as printed.
-  • Bottom: two foot stabilogram plots (top= M-L, bottom= A-P; red=Left, blue=Right).
-    Write brief ML/AP observations and set less_stable_foot.
+0) Page header (on page 1)
+- patient_name, test_datetime_local, duration_s (number), measure_condition (verbatim).
 
-- Page 3 (Global stabilograms + CoP velocity):
-  • Three plots in order: (1) M-L, (2) A-P, (3) CoP velocity.
-    Note drifts, bursts, quiet periods; decide dominant_plane.
+1) Page 1 — Baropodometry & Stabilometry (footprints + globals)
+- left_load_pct, right_load_pct
+- left_mean_pressure, right_mean_pressure
+- quadrant_loads: [UL, UR, LL, LR] if printed
+- arch_type_left, arch_type_right (null if blank), arch_type_present ∈ {"printed","not_printed"}
+- COP mean coordinates with SD and V.N. flag:
+  cop_mean_x_mm, cop_sd_x_mm, cop_x_vn_status
+  cop_mean_y_mm, cop_sd_y_mm, cop_y_vn_status
+- Global metrics (+ V.N. flag each):
+  length_mm, area_mm2, velocity_mm_s, l_s_ratio, ellipse_ratio,
+  ellipse_ap_deviation_deg, velocity_variance_total_mm_s,
+  velocity_variance_ml_mm_s, velocity_variance_ap_mm_s,
+  ap_acceleration_mm_s2, lfs.
 
-- Page 4 (FFT):
-  • Four stacked plots in order: (i) M-L (X), (ii) A-P (Y), (iii) Cross-spectrum, (iv) Force (Z).
-  • For M-L and A-P: dominant_band_hz ∈ {"<0.2","0.2–0.5",">0.5","not_determinable"},
-    top_peak_hz_est like "≈0.10" or null, high_freq_present_gt_0_5 boolean.
-  • Cross-spectrum: low_freq_coupling_present boolean; coupling_peak_hz_est or null.
-  • Force Z: low_freq_peak_hz_est or null; tail_to_1hz ∈ {"rapid","moderate","long","not_determinable"}.
-  • Provide one-sentence fft_summary_across_tests comparing A vs B vs C.
-  • Never invent numeric peak values from plots; keep them qualitative unless printed.
+2) Page 2 — Per-foot metrics + Foot stabilograms
+- left/right tables: length_mm, area_mm2, velocity_mm_s, x_avg_mm, y_avg_mm, x_dev_mm, y_dev_mm, ellipse_ap_deviation_deg
+- foot_stabilograms:
+  { ml_observation, ap_observation, less_stable_foot }
 
-- Page 5 (SDC):
-  • Extract MP, SP, MD, SD, MT, ST, Area exactly as printed.
-  • Classify sdc_pattern ∈ {regular, irregular, mixed, not_determinable}; add a brief sdc_note.
+3) Page 3 — Global stabilograms + CoP velocity
+- { ml_trace_observation, ap_trace_observation, cop_velocity_observation, dominant_plane }
 
-- Page 8 (Dashboard):
-  • Read Postural Index; list which radar axes look most expanded vs contracted.
+4) Page 4 — FFT (X = M-L, Y = A-P, then Cross-spectrum, Force Z)
+- ml: { dominant_band_hz ∈ {"<0.2","0.2–0.5",">0.5","not_determinable"}, top_peak_hz_est (e.g., "≈0.10" or null), high_freq_present_gt_0_5 (boolean) }
+- ap: same fields
+- cross_spectrum: { low_freq_coupling_present (boolean), coupling_peak_hz_est (string or null) }
+- force_z: { low_freq_peak_hz_est (string or null), tail_to_1hz ∈ {"rapid","moderate","long","not_determinable"} }
+- fft_summary_across_tests: one sentence comparing A vs B vs C.
 
-Computed comparisons (use ONLY page-1 global metrics)
-- romberg_b_over_a: compute B/A and signed % change for:
+5) Page 5 — Sway Density Curve
+- mp_s, sp_s, md_mm, sd_mm, mt_s, st_s, area
+- sdc_pattern ∈ {"regular","irregular","mixed","not_determinable"}
+- sdc_note (brief).
+
+6) Page 8 — Postural Index Dashboard
+- postural_index_score (number)
+- radar_expanded_axes: array from the whitelist (most expanded → least)
+- radar_contracted_axes: array from the whitelist (most contracted → least)
+
+COMPUTED COMPARISONS (Page-1 globals ONLY)
+- For the metrics below, compute B/A and C/B:
   length_mm, area_mm2, velocity_mm_s, l_s_ratio, ellipse_ratio,
   velocity_variance_total_mm_s, velocity_variance_ml_mm_s,
   velocity_variance_ap_mm_s, ap_acceleration_mm_s2, lfs.
-- cotton_c_over_b: same set for C/B.
-- Round ratio to 2 decimals; pct_change like "+97%".
+  • Output as { "ratio": <number rounded to 2 decimals>, "pct_change": "<+/-XX%>" }.
+- DO NOT compute ratio/% for angles. For ellipse_ap_deviation_deg, output:
+  • romberg_b_over_a.ellipse_ap_deviation_deg = { "delta_deg": B - A, "sign_flip": <true|false> }
+  • cotton_c_over_b.ellipse_ap_deviation_deg = { "delta_deg": C - B, "sign_flip": <true|false> }
 
-Output
-Return a single JSON strictly matching the schema provided via response_format.
-No narrative. No diagnosis.
+OUTPUT FORMAT (single JSON object)
+{
+  "patient": { "name": "...", "name_detected_in": ["A","B","C"], "notes": null },
+  "tests": {
+    "A": { "metadata": {...}, "page1": {...}, "page2": {...}, "page3": {...}, "page4_fft": {...}, "page5_sdc": {...}, "page8_dashboard": {...}, "discrepancies": { /* optional */ } },
+    "B": { ... },
+    "C": { ... }
+  },
+  "comparisons": {
+    "romberg_b_over_a": { ... },
+    "cotton_c_over_b": { ... }
+  }
+}
+
+DISCREPANCIES OBJECT SCHEMA (if any)
+"discrepancies": {
+  "left_right_load_pct": {
+    "page1": {"left": <num>, "right": <num>},
+    "page8": {"left": <num>, "right": <num>},
+    "decision": "page1"
+  },
+  "...other_fields_if_any...": { "page1": <num>, "page8": <num>, "decision": "page1" }
+}
 `.trim();
 
 const AGENT2_PROMPT = `
-Prompt 2 — Clinical Interpretation & Diagnosis (consumes Agent 1 JSON)
+Prompt 2 — Clinical Interpretation & Diagnosis (consumes Agent-1 JSON)
 
+ROLE
 You are a clinical posturology expert.
 
-Input
-- You receive the first agent’s JSON payload. Treat it as the sole patient evidence.
+INPUT
+• You receive the first agent’s JSON payload. Treat it as the SOLE patient evidence.
 
-Knowledge use
-- Prefer the organization’s KB via file_search (vector store) for clinical context.
-- Fallback: if no relevant KB snippets are retrieved, you may use your pretrained medical knowledge to explain terms, indices, clinical significance, and normative interpretations — but do NOT cite external articles.
+KNOWLEDGE USE
+• Prefer the organization's KB via vector store. Cite ONLY retrieved KB snippets (e.g., [Title] or [Author, Year]) and include a short References list.
+• If no relevant KB passages are retrieved: use your pretrained knowledge to explain concepts, but write: "KB support: none found." Do NOT cite external articles.
 
-Write your report with these sections:
+EVIDENCE DISCIPLINE
+• Use ONLY facts present in the JSON for patient measurements.
+• Where JSON uses qualitative uncertainty ("tie","balanced","not_determinable"), reflect that caution—do not over-interpret.
+
+ANGLE HANDLING
+• Never use ratios or % change for angles.
+• Use the JSON’s angle comparison fields:
+  – romberg_b_over_a.ellipse_ap_deviation_deg: { delta_deg, sign_flip }
+  – cotton_c_over_b.ellipse_ap_deviation_deg: { delta_deg, sign_flip }
+
+STRUCTURE (write these sections)
 
 Header
 - Patient: <patient.name>.
 
-(1) Evidence from patient's PDFs (verbatim)
-- Summarize key values from the JSON for A, B, C:
-  • Page-1 globals with V.N. statuses; loads/pressures; COP X/Y; LFS; L/S; ellipse metrics.
+(1) Evidence from patient’s PDFs (verbatim)
+- Summarize A, B, C by page:
+  • Page-1 globals (+ V.N. statuses if present), loads/pressures, COP X/Y, LFS, L/S, ellipse metrics.
   • Page-2 per-foot metrics + foot-stabilogram notes (less_stable_foot).
-  • Page-3 global stabilograms/CoP-velocity highlights (drifts, bursts, dominant plane).
-  • Page-4 FFT (order: M-L[X], A-P[Y], Cross-spectrum, Force[Z]) — dominant bands, >0.5 Hz presence, cross-spectrum coupling, Z tail; include the across-tests FFT comparison.
-  • Page-5 SDC values/pattern.
-  • Page-8 Postural Index and radar axes.
-  • Computed Romberg (B/A) and Cotton (C/B) ratios.
+  • Page-3 global stabilograms/CoP-velocity highlights (drifts, bursts, dominant_plane, acknowledging "balanced" if applicable).
+  • Page-4 FFT (order: M-L[X], A-P[Y], Cross-spectrum, Force[Z]) — dominant bands, >0.5 Hz presence, coupling, Z tail; include the across-tests FFT comparison.
+  • Page-5 SDC values & pattern.
+  • Page-8 Postural Index & radar axes (use whitelist terms).
+  • Computed Romberg (B/A) and Cotton (C/B) ratios per JSON.
+  • If JSON has "discrepancies", list them briefly and note the Page-1 tie-breaker.
 
 (2) KB-backed and/or pretrained context
-- Explain the meaning/clinical significance of all key metrics (Length, Area, Velocity, L/S, ellipse, velocity variance, A/P acceleration, LFS, SDC, FFT bands).
-- Compare sensory system contributions (visual, vestibular, proprioceptive, stomatognathic) and **state clearly** which is strongest, tying to evidence and ratios.
-- Cite ONLY retrieved KB snippets (inline [Title] or [Author, Year]) and include a brief References list. If none: “KB support: none found.”
+- Explain clinical meaning of metrics (Length, Area, Velocity, L/S, ellipse, velocity variance, A/P acceleration, LFS, SDC, FFT bands).
+- Compare sensory contributions (visual, vestibular, proprioceptive, stomatognathic); state clearly which appears strongest, tying to JSON evidence (ratios, LFS/L-S, FFT profile, SDC).
+- Provide inline citations ONLY to retrieved KB; end with a short References list or "KB support: none found."
 
 (3) Diagnosis
 - Provide a concise diagnosis.
-- Explicitly **rank** sensory systems by influence (primary → secondary → minor) using JSON evidence (Romberg, Cotton, FFT profile, SDC, LFS/L-S).
-- Recommend next steps (e.g., visual reweighting, TMJ/occlusal evaluation, vestibular/oculomotor screening, foam conditions, re-testing).
+- Explicitly RANK sensory systems (primary → secondary → minor) using JSON evidence.
+- Recommend next steps (e.g., visual reweighting, TMJ/occlusal evaluation, vestibular/oculomotor screen, foam conditions, re-testing).
 
 (4) Safety notes / methodological caveats
-- Note device/protocol dependencies (platform-specific LFS, 30-s window, missing fields), inter-trial variability, and that cotton-roll effects are a screening probe, not treatment.
+- Device/protocol dependencies (platform-specific LFS, 30-s window), missing fields/V.N. statuses, inter-trial variability, cotton-rolls as screening not treatment.
 
-Tone
-- Professional and clinical. Always provide a diagnosis and explicitly rank sensory contributions.
+TONE
+Professional and clinical; reflect uncertainty where present; do not over-state beyond JSON evidence.
 `.trim();
 
 // -------- helpers to read Responses API outputs robustly --------
@@ -806,67 +870,34 @@ No narrative. No diagnosis.`;
       throw new Error("Empty extraction response from model");
     }
 
-    // Parse the diagnostic section and JSON from the extraction response
+    // Parse the diagnostic section and JSON from the extraction response (support fence markers)
     let extractionDiagnostics = "";
     let extractionJsonText = extractionText;
-    
-    // Try to split diagnostic section from JSON (JSON typically starts with {)
-    const jsonStartIndex = extractionText.indexOf('{');
-    if (jsonStartIndex > 0) {
-      extractionDiagnostics = extractionText.substring(0, jsonStartIndex).trim();
-      extractionJsonText = extractionText.substring(jsonStartIndex).trim();
-      
-      // Log the diagnostic information for debugging
-      if (extractionDiagnostics) {
-        console.log(`[analyze:${reqId}] === Extraction Diagnostics ===`);
-        console.log(extractionDiagnostics);
-        console.log(`[analyze:${reqId}] === End Diagnostics ===`);
+    const fenceStart = '<<<JSON_START>>>';
+    const fenceEnd = '<<<JSON_END>>>';
+    const startIdx = extractionText.indexOf(fenceStart);
+    const endIdx = extractionText.lastIndexOf(fenceEnd);
+    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+      extractionDiagnostics = extractionText.substring(0, startIdx).trim();
+      extractionJsonText = extractionText.substring(startIdx + fenceStart.length, endIdx).trim();
+    } else {
+      // Fallback: split at first JSON opening brace
+      const jsonStartIndex = extractionText.indexOf('{');
+      if (jsonStartIndex > 0) {
+        extractionDiagnostics = extractionText.substring(0, jsonStartIndex).trim();
+        extractionJsonText = extractionText.substring(jsonStartIndex).trim();
       }
+    }
+    if (extractionDiagnostics) {
+      console.log(`[analyze:${reqId}] === Extraction Diagnostics ===`);
+      console.log(extractionDiagnostics);
+      console.log(`[analyze:${reqId}] === End Diagnostics ===`);
     }
 
     // Second pass: Knowledge augmentation (RAG) based on extraction using vector store
     console.log(`[analyze:${reqId}] Starting augmentation (Responses API call #2) with RAG=${settings.vectorStoreId ? 'on' : 'off'} (KB primary, pretrained fallback without external citations) ...`);
     const tAug0 = Date.now();
-    const augmentationPrompt = `Prompt 2 — Clinical Interpretation & Diagnosis Agent (consumes Agent 1)
-You are a clinical posturology expert.
-
-Input
-- You receive the first agent’s JSON payload (defined above). Treat it as the sole patient evidence.
-
-Knowledge use
-- Prefer the organization’s KB via file_search (vector store) for clinical context.
-- Fallback: if no relevant KB passages are retrieved, you may use your pretrained medical knowledge to explain terms, indices, clinical significance, and normative interpretations — but do NOT cite external articles.
-
-Write your report with these sections:
-
-Header
-- Patient: <patient.name>.
-
-(1) Evidence from patient’s PDFs (verbatim)
-- Summarize key values from the JSON for A, B, C:
-  • Page-1 globals with V.N. statuses; loads/pressures; COP X/Y; LFS; L/S; ellipse metrics.
-  • Page-2 per-foot metrics and foot-stabilogram notes (which foot less stable).
-  • Page-3 global stabilograms/CoP-velocity highlights (drift, bursts, dominant plane).
-  • Page-4 FFT (fixed order: M-L(X), A-P(Y), Cross-spectrum, Force(Z)) — dominant bands, presence of >0.5 Hz components, relative M-L vs A-P power, cross-spectrum coupling, Z low-freq tail; include the across-tests FFT comparison.
-  • Page-5 SDC values and pattern.
-  • Page-8 Postural Index and radar axes.
-  • Computed Romberg (B/A) and Cotton (C/B) ratios.
-
-(2) KB-backed and/or pretrained context
-- Explain the meaning and clinical significance of all key metrics/indices (Length, Area, Velocity, L/S, ellipse, velocity variance, A/P acceleration, LFS, SDC, FFT bands).
-- Compare sensory system contributions (visual, vestibular, proprioceptive, stomatognathic) and **state clearly** which is strongest, with a brief rationale tied to the evidence and ratios.
-- Cite ONLY retrieved KB snippets (inline [Title] or [Author, Year]) and include a short References list. If none: “KB support: none found.”
-
-(3) Diagnosis
-- Provide a concise diagnosis paragraph.
-- Explicitly **rank** sensory systems by influence (primary → secondary → minor) using the JSON evidence (Romberg, Cotton, FFT profile, SDC, LFS/L-S).
-- Recommend next steps (e.g., visual reweighting tasks, TMJ/occlusal evaluation, vestibular/oculomotor screening, foam conditions, re-testing).
-
-(4) Safety notes / methodological caveats
-- Device-/protocol-specific limits (platform-dependent LFS, 30-s window, any missing fields), inter-trial variability, and that cotton-roll effects are a screening probe, not treatment.
-
-Tone
-- Professional and clinical. Always provide a diagnosis and explicitly rank sensory contributions.`;
+    const augmentationPrompt = AGENT2_PROMPT;
 
     const augmentationInput: any[] = [
       {
