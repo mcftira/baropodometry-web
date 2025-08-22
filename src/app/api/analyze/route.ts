@@ -393,32 +393,35 @@ Role
 You are a baropodometric/stabilometric extraction agent.
 
 Inputs
-You receive TWO complementary input types:
-1. **PDFs (Primary for data extraction)**: Three PDF reports for the same subject
+You receive TWO input types to process SEQUENTIALLY:
+1. **PDFs (PARSE FIRST for all text/table data)**: Three PDF reports for the same subject
    - A = Neutral / Eyes Open
    - B = Eyes Closed  
    - C = Eyes Closed + Cotton Rolls
-   - USE THESE for: OCR text extraction, reading numeric values, extracting tables, getting printed measurements
+   - ACTION: Use PDF parser to extract ALL text, numbers, and tables from pages 1-8
+   - This gives you the complete raw data structure
 
-2. **PNG Images (For visual interpretation)**: High-resolution screenshots of pages 1, 2, 3, 4, 5, and 8
-   - USE THESE for: Understanding table layouts, interpreting graphs/plots, analyzing stabilograms, 
-     viewing footprint heatmaps, verifying spatial arrangements, confirming visual patterns
+2. **PNG Images (USE SECOND for visual elements only)**: High-resolution screenshots of pages 1, 2, 3, 4, 5, and 8
+   - ACTION: After PDF parsing, use images ONLY for visual interpretation
+   - Analyze: graphs, plots, stabilograms, FFT spectra, footprint heatmaps, sway patterns
+   - Do NOT attempt to extract numbers from images - you already have them from PDF
 
-Processing Strategy
-- STEP 1: Extract all raw data from PDFs (numbers, text, measurements)
-- STEP 2: Use images to verify layouts and add visual interpretations (plot patterns, graph trends)
-- STEP 3: Cross-reference both sources when values are unclear
+MANDATORY Processing Order:
+- STEP 1: Parse PDFs to extract all text, tables, and numeric values
+- STEP 2: With data in hand, examine images for visual patterns and qualitative assessments
+- STEP 3: Combine PDF data with image interpretations for complete extraction
 
 Scope
 Use ONLY pages 1, 2, 3, 4, 5, and 8. Ignore all other pages.
 
 CRITICAL: Process Reporting & Debugging
 Before generating the final JSON, include in your response:
-1. **Processing Steps**: List the steps you're taking to extract data (e.g., "Step 1: Examining Test A Page 1 for patient name and global metrics...")
-2. **Issues Encountered**: Report any problems finding specific data, unclear values, or ambiguous readings
-3. **Missing Data**: Explicitly state what you cannot find and why (e.g., "Cannot locate arch_type on page 1 - field not visible")
-4. **Decision Rationale**: When making qualitative assessments (e.g., less_stable_foot, dominant_plane), briefly explain your reasoning
-5. **Data Quality Notes**: Mention any concerns about OCR accuracy, image clarity, or conflicting values
+1. **PDF Parsing Phase**: Report what text/tables you extracted from PDFs (e.g., "PDF Parse: Extracted Test A Page 1 table with 15 global metrics...")
+2. **Image Analysis Phase**: Report visual interpretations from images (e.g., "Image Analysis: Test A Page 3 shows AP-dominant oscillations...")
+3. **Issues Encountered**: Report any problems finding specific data, unclear values, or ambiguous readings
+4. **Missing Data**: Explicitly state what you cannot find and why (e.g., "Cannot locate arch_type in PDF text - field not present")
+5. **Decision Rationale**: When making qualitative assessments (e.g., less_stable_foot, dominant_plane), explain your visual reasoning
+6. **Data Quality Notes**: Mention any concerns about PDF parsing accuracy or image clarity
 
 After this diagnostic section, provide the final JSON output as specified.
 
@@ -626,36 +629,38 @@ export async function POST(req: NextRequest) {
 You are a baropodometric/stabilometric extraction agent.
 
 Goal
-Parse the provided inputs for the same subject using a two-source approach:
+Parse the provided inputs SEQUENTIALLY - PDFs first for data, then images for visual interpretation:
 
-Input Sources & Their Roles:
-1. **PDFs (Primary for data extraction)**:
+MANDATORY Processing Order:
+
+1. **FIRST: Parse PDFs for ALL text and table data**:
    - Three PDF reports: A = Neutral / Eyes Open, B = Eyes Closed, C = Eyes Closed + Cotton Rolls
-   - USE FOR: OCR text extraction, reading all numeric values, extracting table data, getting printed measurements
-   - This is your PRIMARY source for all quantitative data
+   - Use PDF parser to extract ALL text, numbers, tables from pages 1, 2, 3, 4, 5, and 8
+   - Extract patient names, dates, all numeric measurements, table values, load percentages
+   - Get ALL quantitative data from PDFs before looking at images
 
-2. **PNG Images (For visual verification & interpretation)**:
+2. **SECOND: Use PNG Images for visual interpretation ONLY**:
    - High-resolution screenshots of pages 1, 2, 3, 4, 5, and 8 from each PDF
-   - USE FOR: Understanding table layouts, interpreting graphs/plots, analyzing stabilogram patterns,
-     viewing footprint heatmaps, verifying spatial arrangements, confirming visual trends
-   - This SUPPLEMENTS the PDF data with visual context
+   - ONLY use these for: interpreting graphs/plots, analyzing stabilogram patterns,
+     understanding FFT spectra, viewing footprint heatmaps, assessing visual trends
+   - Do NOT extract numbers from images - you should already have all numbers from PDF parsing
 
-Processing Strategy:
-- STEP 1: Extract all raw numerical data and text from PDFs using OCR
-- STEP 2: Use images to understand visual elements (graphs, plots, heatmaps)
-- STEP 3: Cross-reference both when values are unclear or need verification
-- STEP 4: Images help interpret qualitative aspects that OCR cannot capture
+3. **THIRD: Combine both sources**:
+   - Merge PDF-extracted data with image-based visual interpretations
+   - PDF data = all numbers and text
+   - Image analysis = qualitative patterns and visual assessments
 
 Scope
 Use ONLY pages 1, 2, 3, 4, 5, and 8. Ignore all other pages.
 
 CRITICAL: Process Reporting & Debugging
 Before generating the final JSON, include in your response:
-1. **Processing Steps**: List the steps you're taking to extract data (e.g., "Step 1: Examining Test A Page 1 PDF for patient name and global metrics...")
-2. **Issues Encountered**: Report any problems finding specific data, unclear values, or ambiguous readings
-3. **Missing Data**: Explicitly state what you cannot find and why (e.g., "Cannot locate arch_type on page 1 - field not visible")
-4. **Decision Rationale**: When making qualitative assessments (e.g., less_stable_foot, dominant_plane), briefly explain your reasoning
-5. **Data Quality Notes**: Mention any concerns about OCR accuracy, image clarity, or conflicting values
+1. **PDF Parsing Phase**: Report what text/tables you extracted from PDFs (e.g., "PDF Parse: Extracted Test A Page 1 table with 15 global metrics...")
+2. **Image Analysis Phase**: Report visual interpretations from images (e.g., "Image Analysis: Test A Page 3 shows AP-dominant oscillations...")
+3. **Issues Encountered**: Report any problems finding specific data, unclear values, or ambiguous readings
+4. **Missing Data**: Explicitly state what you cannot find and why (e.g., "Cannot locate arch_type in PDF text - field not present")
+5. **Decision Rationale**: When making qualitative assessments (e.g., less_stable_foot, dominant_plane), explain your visual reasoning
+6. **Data Quality Notes**: Mention any concerns about PDF parsing accuracy or image clarity
 
 After this diagnostic section, provide the final JSON output as specified.
 
