@@ -123,6 +123,36 @@ export default function Home() {
   };
   const cmp = extracted?.comparisons;
   const cmpFmt = (o?: any) => (o && o.ratio != null ? `${Number(o.ratio).toFixed(2)} (${getPct(o.pct_change)})` : "—");
+  const cmpAngleFmt = (o?: any) => {
+    if (!o) return "—";
+    if (typeof o?.delta_deg === "number") {
+      const signFlip = o?.sign_flip ? " (sign flip)" : "";
+      return `${o.delta_deg.toFixed(2)}°${signFlip}`;
+    }
+    // Fallback to ratio formatting if object not present
+    if (o?.ratio != null) return `${Number(o.ratio).toFixed(2)} (${getPct(o.pct_change)})`;
+    return "—";
+  };
+
+  function VNChip({ status }: { status?: string }) {
+    if (!status) return null as any;
+    const map: Record<string, string> = {
+      within: "bg-emerald-50 text-emerald-800 border-emerald-200",
+      above: "bg-orange-50 text-orange-800 border-orange-200",
+      below: "bg-blue-50 text-blue-800 border-blue-200",
+      not_printed: "bg-gray-50 text-gray-700 border-gray-200"
+    };
+    const cls = map[status] || "bg-gray-50 text-gray-700 border-gray-200";
+    return (
+      <span className={`px-1.5 py-0.5 rounded border text-[10px] ${cls}`}>{status}</span>
+    );
+  }
+
+  // V.N. status helpers
+  const getVNStatus = (test: any, key: string): string | undefined => {
+    const g = pickGlobals(test) || {};
+    return g?.[`${key}_vn_status`];
+  };
 
   // Auto-advance carousel when new messages arrive
   useEffect(() => {
@@ -599,16 +629,29 @@ export default function Home() {
                           const t = extracted.tests?.[k];
                           if (!t) return null;
                           const g = pickGlobals(t);
+                          const loads = pickLoads(t);
                           return (
-                            <div key={k} className="p-3 rounded border bg-white/60">
+                            <div key={k} className="p-4 rounded border bg-white/70 space-y-2">
                               <h4 className="text-xs font-semibold mb-2">{k === "A" ? "Neutral" : k === "B" ? "Closed Eyes" : "Cotton Rolls"}</h4>
-                              <ul className="text-xs space-y-1">
-                                <li><strong>Length</strong> {getNumber(g.length_mm)} mm</li>
-                                <li><strong>Area</strong> {getNumber(g.area_mm2)} mm²</li>
-                                <li><strong>Velocity</strong> {getNumber(g.velocity_mm_s)} mm/s</li>
-                                <li><strong>L/S</strong> {getNumber(g.l_s_ratio)}</li>
-                                <li><strong>LFS</strong> {getNumber(g.lfs)}</li>
-                              </ul>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <div className="text-[11px] opacity-70 mb-1">Key Vitals</div>
+                                  <ul className="text-xs space-y-1">
+                                    <li className="flex items-center gap-2"><strong>Length</strong> {getNumber(g.length_mm)} mm <VNChip status={getVNStatus(t, "length_mm")} /></li>
+                                    <li className="flex items-center gap-2"><strong>Area</strong> {getNumber(g.area_mm2)} mm² <VNChip status={getVNStatus(t, "area_mm2")} /></li>
+                                    <li className="flex items-center gap-2"><strong>Velocity</strong> {getNumber(g.velocity_mm_s)} mm/s <VNChip status={getVNStatus(t, "velocity_mm_s")} /></li>
+                                    <li className="flex items-center gap-2"><strong>L/S</strong> {getNumber(g.l_s_ratio)} <VNChip status={getVNStatus(t, "l_s_ratio")} /></li>
+                                    <li className="flex items-center gap-2"><strong>LFS</strong> {getNumber(g.lfs)} <VNChip status={getVNStatus(t, "lfs")} /></li>
+                                  </ul>
+                                </div>
+                                <div>
+                                  <div className="text-[11px] opacity-70 mb-1">Loads & Pressures</div>
+                                  <ul className="text-xs space-y-1">
+                                    <li><strong>Loads</strong> L {getNumber(loads.left_load_pct)}% / R {getNumber(loads.right_load_pct)}%</li>
+                                    <li><strong>Mean P</strong> L {getNumber(loads.left_mean_pressure)} / R {getNumber(loads.right_mean_pressure)}</li>
+                                  </ul>
+                                </div>
+                              </div>
                             </div>
                           );
                         })}
@@ -624,6 +667,7 @@ export default function Home() {
                                 <ul className="text-xs space-y-1">
                                   <li>Length {cmpFmt(rb.length_mm)}, Area {cmpFmt(rb.area_mm2)}, Velocity {cmpFmt(rb.velocity_mm_s)}</li>
                                   <li>L/S {cmpFmt(rb.l_s_ratio)}, LFS {cmpFmt(rb.lfs)}, AP accel {cmpFmt(rb.ap_acceleration_mm_s2)}</li>
+                                  <li>Ellipse A/P Δ {cmpAngleFmt(rb.ellipse_ap_deviation_deg)}</li>
                                 </ul>
                               ); })()}
                             </div>
@@ -633,9 +677,30 @@ export default function Home() {
                                 <ul className="text-xs space-y-1">
                                   <li>Length {cmpFmt(cb.length_mm)}, Area {cmpFmt(cb.area_mm2)}, Velocity {cmpFmt(cb.velocity_mm_s)}</li>
                                   <li>L/S {cmpFmt(cb.l_s_ratio)}, LFS {cmpFmt(cb.lfs)}, AP accel {cmpFmt(cb.ap_acceleration_mm_s2)}</li>
+                                  <li>Ellipse A/P Δ {cmpAngleFmt(cb.ellipse_ap_deviation_deg)}</li>
                                 </ul>
                               ); })()}
                             </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Discrepancies (if present) */}
+                      {(["A","B","C"] as const).some((k) => extracted.tests?.[k]?.discrepancies) && (
+                        <div className="mt-3 p-3 border rounded bg-amber-50">
+                          <h5 className="text-xs font-semibold mb-1 flex items-center gap-1"><AlertCircle className="h-4 w-4 text-amber-600" /> Discrepancies</h5>
+                          <div className="text-xs grid gap-1">
+                            {(["A","B","C"] as const).map((k) => {
+                              const disc = extracted.tests?.[k]?.discrepancies;
+                              if (!disc) return null;
+                              const items = Object.keys(disc);
+                              return items.map((name: string, idx: number) => (
+                                <div key={`${k}-${name}-${idx}`} className="flex items-center justify-between">
+                                  <span className="opacity-70">{k} · {name}</span>
+                                  <span className="opacity-80">decision: {disc[name]?.decision || "page1"}</span>
+                                </div>
+                              ));
+                            })}
                           </div>
                         </div>
                       )}
@@ -646,9 +711,25 @@ export default function Home() {
                   <section className="glass-card p-6">
                     <h3 className="text-lg font-medium mb-3">Clinical Interpretation & Diagnosis</h3>
                     <div className="text-sm whitespace-pre-wrap leading-relaxed">{result.augmentedReportText}</div>
+                    <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                      <span className="px-2 py-1 rounded-full bg-emerald-50 border border-emerald-200">Diagnosis</span>
+                      <span className="px-2 py-1 rounded-full bg-blue-50 border border-blue-200">Evidence</span>
+                      <span className="px-2 py-1 rounded-full bg-purple-50 border border-purple-200">References</span>
+                    </div>
                   </section>
                 )}
               </div>
+            )}
+
+            {/* Diagnostics (Agent 1) */}
+            {((result as any)?.debug?.extractionDiagnostics) && (
+              <section className="glass-card p-6">
+                <h3 className="text-lg font-medium mb-3 flex items-center gap-2"><Info className="h-5 w-5" /> Diagnostics</h3>
+                <details>
+                  <summary className="text-sm cursor-pointer opacity-80 hover:opacity-100">Show diagnostic log</summary>
+                  <pre className="text-xs whitespace-pre-wrap overflow-auto max-h-96 p-3 bg-gray-50 rounded font-mono mt-3">{(result as any).debug.extractionDiagnostics}</pre>
+                </details>
+              </section>
             )}
                 {result.interpretation.vision_findings && (
                   <section className="glass-card p-6">
@@ -720,6 +801,7 @@ export default function Home() {
               </div>
               {showRaw && (
                 <>
+                  <h4 className="text-sm font-medium mb-2">Response Envelope</h4>
                   <pre className="text-xs whitespace-pre-wrap overflow-auto max-h-96 p-3 bg-gray-50 rounded font-mono mb-3">
                     {JSON.stringify(result, null, 2)}
                   </pre>
@@ -765,6 +847,14 @@ export default function Home() {
                   Export Reports (TXT)
                 </button>
               )}
+              {/* Print-friendly */}
+              <button
+                onClick={() => window.print()}
+                className="btn-secondary flex items-center gap-2"
+              >
+                <FileText className="h-4 w-4" />
+                Print Summary
+              </button>
             </div>
           </div>
         )}
