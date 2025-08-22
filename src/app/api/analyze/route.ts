@@ -404,6 +404,16 @@ Scope
 Use ONLY pages 1, 2, 3, 4, 5, and 8. Ignore all other pages.
 Leverage both PDFs and images: use images for better visual interpretation of plots, graphs, tables, and spatial layouts.
 
+CRITICAL: Process Reporting & Debugging
+Before generating the final JSON, include in your response:
+1. **Processing Steps**: List the steps you're taking to extract data (e.g., "Step 1: Examining Test A Page 1 for patient name and global metrics...")
+2. **Issues Encountered**: Report any problems finding specific data, unclear values, or ambiguous readings
+3. **Missing Data**: Explicitly state what you cannot find and why (e.g., "Cannot locate arch_type on page 1 - field not visible")
+4. **Decision Rationale**: When making qualitative assessments (e.g., less_stable_foot, dominant_plane), briefly explain your reasoning
+5. **Data Quality Notes**: Mention any concerns about OCR accuracy, image clarity, or conflicting values
+
+After this diagnostic section, provide the final JSON output as specified.
+
 Strict rules
 - Extract ONLY what is printed on those pages (OCR if needed). Do NOT guess or infer.
 - Preserve units, but normalize decimals to dot (e.g., 11.57). Return numbers as JSON numbers (not strings).
@@ -616,6 +626,16 @@ Scope
 Use ONLY pages 1, 2, 3, 4, 5, and 8. Ignore all other pages.
 Leverage both PDFs and images: use images for better visual interpretation of plots, graphs, tables, footprint heatmaps, and spatial layouts.
 
+CRITICAL: Process Reporting & Debugging
+Before generating the final JSON, include in your response:
+1. **Processing Steps**: List the steps you're taking to extract data (e.g., "Step 1: Examining Test A Page 1 for patient name and global metrics...")
+2. **Issues Encountered**: Report any problems finding specific data, unclear values, or ambiguous readings
+3. **Missing Data**: Explicitly state what you cannot find and why (e.g., "Cannot locate arch_type on page 1 - field not visible")
+4. **Decision Rationale**: When making qualitative assessments (e.g., less_stable_foot, dominant_plane), briefly explain your reasoning
+5. **Data Quality Notes**: Mention any concerns about OCR accuracy, image clarity, or conflicting values
+
+After this diagnostic section, provide the final JSON output as specified.
+
 Strict rules
 - Extract ONLY what is printed on those pages (OCR if needed). Do NOT guess or infer.
 - Preserve units, but normalize decimals to dot (e.g., 11.57). Return numbers as JSON numbers, not strings.
@@ -755,6 +775,24 @@ No narrative. No diagnosis.`;
       throw new Error("Empty extraction response from model");
     }
 
+    // Parse the diagnostic section and JSON from the extraction response
+    let extractionDiagnostics = "";
+    let extractionJsonText = extractionText;
+    
+    // Try to split diagnostic section from JSON (JSON typically starts with {)
+    const jsonStartIndex = extractionText.indexOf('{');
+    if (jsonStartIndex > 0) {
+      extractionDiagnostics = extractionText.substring(0, jsonStartIndex).trim();
+      extractionJsonText = extractionText.substring(jsonStartIndex).trim();
+      
+      // Log the diagnostic information for debugging
+      if (extractionDiagnostics) {
+        console.log(`[analyze:${reqId}] === Extraction Diagnostics ===`);
+        console.log(extractionDiagnostics);
+        console.log(`[analyze:${reqId}] === End Diagnostics ===`);
+      }
+    }
+
     // Second pass: Knowledge augmentation (RAG) based on extraction using vector store
     console.log(`[analyze:${reqId}] Starting augmentation (Responses API call #2) with RAG=${settings.vectorStoreId ? 'on' : 'off'} (KB primary, pretrained fallback without external citations) ...`);
     const tAug0 = Date.now();
@@ -804,7 +842,7 @@ Tone
         role: "user",
         content: [
           { type: "input_text", text: augmentationPrompt },
-          { type: "input_text", text: `Extracted findings to augment (verbatim):\n\n${extractionText}` }
+          { type: "input_text", text: `Extracted findings to augment (verbatim):\n\n${extractionJsonText}` }
         ]
       }
     ];
@@ -837,7 +875,7 @@ Tone
 
     return new Response(JSON.stringify({ ok: true, data: {
       mode,
-      extractionReportText: extractionText,
+      extractionReportText: extractionJsonText,
       augmentedReportText: augmentedText,
       debug: {
         prepareMs: tPrep1 - tPrep0,
@@ -846,7 +884,8 @@ Tone
         totalMs: t1 - t0,
         extractionModel,
         augmentationModel: model,
-        vectorStoreUsed: Boolean(settings.vectorStoreId)
+        vectorStoreUsed: Boolean(settings.vectorStoreId),
+        extractionDiagnostics: extractionDiagnostics || "No diagnostic output provided"
       }
     }}), {
           status: 200,
