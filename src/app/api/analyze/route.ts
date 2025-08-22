@@ -938,6 +938,8 @@ No narrative. No diagnosis.`;
     return new Response(JSON.stringify({ ok: true, data: {
       mode,
       extractionReportText: extractionJsonText,
+      // Provide parsed JSON too when possible
+      extractionReportJson: tryParseJSON(extractionJsonText),
       augmentedReportText: augmentedText,
       debug: {
         prepareMs: tPrep1 - tPrep0,

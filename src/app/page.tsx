@@ -99,10 +99,19 @@ export default function Home() {
     const r: any = result as any;
     if (!r) return undefined;
     if (r.extractionReportJson) return r.extractionReportJson;
-    if (r.extractionReportText) {
-      try { return JSON.parse(r.extractionReportText as string); } catch { /* ignore */ }
-    }
-    return undefined;
+    const text: string | undefined = r.extractionReportText;
+    if (!text) return undefined;
+    const trimFences = (s: string) => {
+      const fs = "<<<JSON_START>>>";
+      const fe = "<<<JSON_END>>>";
+      const i = s.indexOf(fs);
+      const j = s.lastIndexOf(fe);
+      if (i !== -1 && j !== -1 && j > i) return s.substring(i + fs.length, j).trim();
+      // fallback: split at first '{'
+      const k = s.indexOf("{");
+      return k >= 0 ? s.substring(k) : s;
+    };
+    try { return JSON.parse(trimFences(text)); } catch { return undefined; }
   })();
 
   // Small helpers for safe access/formatting
