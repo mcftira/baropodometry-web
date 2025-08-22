@@ -426,7 +426,7 @@ Before generating the final JSON, include in your response:
 After this diagnostic section, provide the final JSON output as specified.
 
 Strict rules
-- Extract ONLY what is printed on those pages (OCR if needed). Do NOT guess or infer.
+- Extract ONLY what is printed on those pages. Do NOT guess or infer.
 - Preserve units, but normalize decimals to dot (e.g., 11.57). Return numbers as JSON numbers (not strings).
 - If a printed value/field is missing, set it to null and use "not_printed" for V.N. status fields or booleans where applicable.
 - Qualitative descriptions of plots are allowed (short, factual, no speculation).
@@ -436,7 +436,7 @@ VISION TASKS & LAYOUT (constant)
 - Page 1 (Footprints + Globals):
   • Read % loads, mean pressures, quadrant loads.
   • Read COP mean (X,Y) with SD and V.N. flags; read ALL global metrics + V.N. flags.
-  • Patient name is in the top-left header; test date/time and duration are under the header.
+  • Patient name is in the top-left header; in same line with test date.
 
 - Page 2 (Per-foot tables + Foot stabilograms):
   • Top: per-foot numerical table (Left/Right) — extract exactly as printed.
@@ -543,14 +543,17 @@ function normalizeExtraction(ex: any) {
     for (const key of ["A", "B", "C"] as const) {
       const t = ex?.tests?.[key];
       if (!t) continue;
-      const loads = t?.page1?.loads;
-      if (loads && typeof loads.left_load_pct === "number" && typeof loads.right_load_pct === "number") {
-        const sum = loads.left_load_pct + loads.right_load_pct;
+      
+      // Check load percentages directly under page1 (not page1.loads)
+      const page1 = t?.page1;
+      if (page1 && typeof page1.left_load_pct === "number" && typeof page1.right_load_pct === "number") {
+        const sum = page1.left_load_pct + page1.right_load_pct;
         if (!(sum >= 98 && sum <= 102)) {
-          loads.left_load_pct = null;
-          loads.right_load_pct = null;
+          page1.left_load_pct = null;
+          page1.right_load_pct = null;
         }
       }
+      
       const fft = t?.page4_fft;
       if (fft) {
         if (fft.ml_x && !fft.ml) { fft.ml = fft.ml_x; delete fft.ml_x; }
