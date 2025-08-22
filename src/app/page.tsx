@@ -80,6 +80,7 @@ interface AnalysisResult {
   // New dual-report fields for Responses API pipeline
   extractionReportText?: string;
   augmentedReportText?: string;
+  extractionReportJson?: any;
 }
 
 export default function Home() {
@@ -92,6 +93,36 @@ export default function Home() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [showRaw, setShowRaw] = useState(false);
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("normal");
+
+  // Derive structured extraction JSON if available
+  const extracted = (() => {
+    const r: any = result as any;
+    if (!r) return undefined;
+    if (r.extractionReportJson) return r.extractionReportJson;
+    if (r.extractionReportText) {
+      try { return JSON.parse(r.extractionReportText as string); } catch { /* ignore */ }
+    }
+    return undefined;
+  })();
+
+  // Small helpers for safe access/formatting
+  const getNumber = (v: any): string => (typeof v === "number" ? v.toFixed(2) : "—");
+  const getPct = (v: any): string => (typeof v === "string" ? v : v == null ? "" : String(v));
+  const pickGlobals = (test: any) => {
+    const p1 = test?.page1 || {};
+    const globals = p1.globals || p1; // support legacy flat shape
+    return globals;
+  };
+  const pickLoads = (test: any) => {
+    const p1 = test?.page1 || {};
+    return p1.loads || p1;
+  };
+  const pickFeet = (test: any) => {
+    const p2 = test?.page2 || {};
+    return { left: p2.left || p2, right: p2.right || p2 };
+  };
+  const cmp = extracted?.comparisons;
+  const cmpFmt = (o?: any) => (o && o.ratio != null ? `${Number(o.ratio).toFixed(2)} (${getPct(o.pct_change)})` : "—");
 
   // Auto-advance carousel when new messages arrive
   useEffect(() => {
@@ -547,19 +578,74 @@ export default function Home() {
             {/* Clinical Report for Stage Analysis Mode (legacy JSON result) */}
             {analysisMode === "normal" && result.interpretation && (
               <div className="space-y-4">
-            {/* New dual text reports from Responses API */}
-            {(result.extractionReportText || result.augmentedReportText) && (
+            {/* Human-readable reports */}
+            {(extracted || result.augmentedReportText) && (
               <div className="grid gap-4 md:grid-cols-2">
-                {result.extractionReportText && (
+                {extracted && (
                   <section className="glass-card p-6">
-                    <h3 className="text-lg font-medium mb-3">Primary Extraction Report</h3>
-                    <pre className="text-sm whitespace-pre-wrap">{result.extractionReportText}</pre>
+                    <h3 className="text-lg font-medium mb-3">Objective Findings (from PDFs)</h3>
+                    <div className="text-sm space-y-4">
+                      {extracted.patient?.name && (
+                        <div className="flex items-center justify-between">
+                          <p><strong>Patient:</strong> {extracted.patient.name}</p>
+                          {extracted.tests?.A?.metadata?.test_datetime_local && (
+                            <p className="opacity-70">{extracted.tests.A.metadata.test_datetime_local}</p>
+                          )}
+                        </div>
+                      )}
+                      {/* Condition summary cards */}
+                      <div className="grid gap-3 md:grid-cols-3">
+                        {(["A","B","C"] as const).map((k) => {
+                          const t = extracted.tests?.[k];
+                          if (!t) return null;
+                          const g = pickGlobals(t);
+                          return (
+                            <div key={k} className="p-3 rounded border bg-white/60">
+                              <h4 className="text-xs font-semibold mb-2">{k === "A" ? "Neutral" : k === "B" ? "Closed Eyes" : "Cotton Rolls"}</h4>
+                              <ul className="text-xs space-y-1">
+                                <li><strong>Length</strong> {getNumber(g.length_mm)} mm</li>
+                                <li><strong>Area</strong> {getNumber(g.area_mm2)} mm²</li>
+                                <li><strong>Velocity</strong> {getNumber(g.velocity_mm_s)} mm/s</li>
+                                <li><strong>L/S</strong> {getNumber(g.l_s_ratio)}</li>
+                                <li><strong>LFS</strong> {getNumber(g.lfs)}</li>
+                              </ul>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {/* Comparisons */}
+                      {extracted.comparisons && (
+                        <div className="mt-2">
+                          <h4 className="text-xs font-semibold mb-2">Computed Comparisons</h4>
+                          <div className="grid gap-2 md:grid-cols-2">
+                            <div className="p-3 rounded border bg-white/60">
+                              <h5 className="text-xs font-semibold mb-2">Romberg B/A</h5>
+                              {(() => { const rb = cmp?.romberg_b_over_a || {}; return (
+                                <ul className="text-xs space-y-1">
+                                  <li>Length {cmpFmt(rb.length_mm)}, Area {cmpFmt(rb.area_mm2)}, Velocity {cmpFmt(rb.velocity_mm_s)}</li>
+                                  <li>L/S {cmpFmt(rb.l_s_ratio)}, LFS {cmpFmt(rb.lfs)}, AP accel {cmpFmt(rb.ap_acceleration_mm_s2)}</li>
+                                </ul>
+                              ); })()}
+                            </div>
+                            <div className="p-3 rounded border bg-white/60">
+                              <h5 className="text-xs font-semibold mb-2">Cotton C/B</h5>
+                              {(() => { const cb = cmp?.cotton_c_over_b || {}; return (
+                                <ul className="text-xs space-y-1">
+                                  <li>Length {cmpFmt(cb.length_mm)}, Area {cmpFmt(cb.area_mm2)}, Velocity {cmpFmt(cb.velocity_mm_s)}</li>
+                                  <li>L/S {cmpFmt(cb.l_s_ratio)}, LFS {cmpFmt(cb.lfs)}, AP accel {cmpFmt(cb.ap_acceleration_mm_s2)}</li>
+                                </ul>
+                              ); })()}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </section>
                 )}
                 {result.augmentedReportText && (
                   <section className="glass-card p-6">
-                    <h3 className="text-lg font-medium mb-3">Knowledge-Augmented Report</h3>
-                    <pre className="text-sm whitespace-pre-wrap">{result.augmentedReportText}</pre>
+                    <h3 className="text-lg font-medium mb-3">Clinical Interpretation & Diagnosis</h3>
+                    <div className="text-sm whitespace-pre-wrap leading-relaxed">{result.augmentedReportText}</div>
                   </section>
                 )}
               </div>
@@ -633,9 +719,16 @@ export default function Home() {
                 </button>
               </div>
               {showRaw && (
-                <pre className="text-xs whitespace-pre-wrap overflow-auto max-h-96 p-3 bg-gray-50 rounded font-mono">
-                  {JSON.stringify(result, null, 2)}
-                </pre>
+                <>
+                  <pre className="text-xs whitespace-pre-wrap overflow-auto max-h-96 p-3 bg-gray-50 rounded font-mono mb-3">
+                    {JSON.stringify(result, null, 2)}
+                  </pre>
+                  {extracted && (
+                    <pre className="text-xs whitespace-pre-wrap overflow-auto max-h-96 p-3 bg-gray-50 rounded font-mono">
+                      {JSON.stringify(extracted, null, 2)}
+                    </pre>
+                  )}
+                </>
               )}
             </section>
 
