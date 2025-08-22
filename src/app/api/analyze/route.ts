@@ -393,16 +393,24 @@ Role
 You are a baropodometric/stabilometric extraction agent.
 
 Inputs
-You receive:
-1. Three PDFs for the same subject:
-   A = Neutral / Eyes Open
-   B = Eyes Closed
-   C = Eyes Closed + Cotton Rolls
-2. High-quality PNG screenshots of pages 1, 2, 3, 4, 5, and 8 from each PDF for enhanced visual interpretation.
+You receive TWO complementary input types:
+1. **PDFs (Primary for data extraction)**: Three PDF reports for the same subject
+   - A = Neutral / Eyes Open
+   - B = Eyes Closed  
+   - C = Eyes Closed + Cotton Rolls
+   - USE THESE for: OCR text extraction, reading numeric values, extracting tables, getting printed measurements
+
+2. **PNG Images (For visual interpretation)**: High-resolution screenshots of pages 1, 2, 3, 4, 5, and 8
+   - USE THESE for: Understanding table layouts, interpreting graphs/plots, analyzing stabilograms, 
+     viewing footprint heatmaps, verifying spatial arrangements, confirming visual patterns
+
+Processing Strategy
+- STEP 1: Extract all raw data from PDFs (numbers, text, measurements)
+- STEP 2: Use images to verify layouts and add visual interpretations (plot patterns, graph trends)
+- STEP 3: Cross-reference both sources when values are unclear
 
 Scope
 Use ONLY pages 1, 2, 3, 4, 5, and 8. Ignore all other pages.
-Leverage both PDFs and images: use images for better visual interpretation of plots, graphs, tables, and spatial layouts.
 
 CRITICAL: Process Reporting & Debugging
 Before generating the final JSON, include in your response:
@@ -618,17 +626,32 @@ export async function POST(req: NextRequest) {
 You are a baropodometric/stabilometric extraction agent.
 
 Goal
-Parse the provided inputs for the same subject:
-- Three PDFs: A = Neutral / Eyes Open, B = Eyes Closed, C = Eyes Closed + Cotton Rolls
-- High-quality PNG screenshots of pages 1, 2, 3, 4, 5, and 8 from each PDF
+Parse the provided inputs for the same subject using a two-source approach:
+
+Input Sources & Their Roles:
+1. **PDFs (Primary for data extraction)**:
+   - Three PDF reports: A = Neutral / Eyes Open, B = Eyes Closed, C = Eyes Closed + Cotton Rolls
+   - USE FOR: OCR text extraction, reading all numeric values, extracting table data, getting printed measurements
+   - This is your PRIMARY source for all quantitative data
+
+2. **PNG Images (For visual verification & interpretation)**:
+   - High-resolution screenshots of pages 1, 2, 3, 4, 5, and 8 from each PDF
+   - USE FOR: Understanding table layouts, interpreting graphs/plots, analyzing stabilogram patterns,
+     viewing footprint heatmaps, verifying spatial arrangements, confirming visual trends
+   - This SUPPLEMENTS the PDF data with visual context
+
+Processing Strategy:
+- STEP 1: Extract all raw numerical data and text from PDFs using OCR
+- STEP 2: Use images to understand visual elements (graphs, plots, heatmaps)
+- STEP 3: Cross-reference both when values are unclear or need verification
+- STEP 4: Images help interpret qualitative aspects that OCR cannot capture
 
 Scope
 Use ONLY pages 1, 2, 3, 4, 5, and 8. Ignore all other pages.
-Leverage both PDFs and images: use images for better visual interpretation of plots, graphs, tables, footprint heatmaps, and spatial layouts.
 
 CRITICAL: Process Reporting & Debugging
 Before generating the final JSON, include in your response:
-1. **Processing Steps**: List the steps you're taking to extract data (e.g., "Step 1: Examining Test A Page 1 for patient name and global metrics...")
+1. **Processing Steps**: List the steps you're taking to extract data (e.g., "Step 1: Examining Test A Page 1 PDF for patient name and global metrics...")
 2. **Issues Encountered**: Report any problems finding specific data, unclear values, or ambiguous readings
 3. **Missing Data**: Explicitly state what you cannot find and why (e.g., "Cannot locate arch_type on page 1 - field not visible")
 4. **Decision Rationale**: When making qualitative assessments (e.g., less_stable_foot, dominant_plane), briefly explain your reasoning
