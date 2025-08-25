@@ -9,6 +9,12 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
+# Configure functions timeout (26 seconds for Pro, 10 for Free)
+[functions]
+  # Note: This requires a Pro plan for > 10 seconds
+  # For free tier, functions will timeout at 10 seconds
+  node_bundler = "esbuild"
+
 # Headers to ensure API routes work correctly
 [[headers]]
   for = "/api/*"

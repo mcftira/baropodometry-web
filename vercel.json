@@ -1,0 +1,26 @@
+{
+  "functions": {
+    "src/app/api/analyze/route.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/test/route.ts": {
+      "maxDuration": 10
+    },
+    "src/app/api/config/route.ts": {
+      "maxDuration": 10
+    },
+    "src/app/api/bootstrap-key/route.ts": {
+      "maxDuration": 10
+    },
+    "src/app/api/health/route.ts": {
+      "maxDuration": 10
+    }
+  },
+  "env": {
+    "OPENAI_API_KEY": "@openai-api-key",
+    "MODEL": "@model",
+    "LANGUAGE": "@language",
+    "VECTOR_STORE_ID": "@vector-store-id",
+    "VERBOSE_OPENAI": "@verbose-openai"
+  }
+}
