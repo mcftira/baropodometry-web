@@ -4,6 +4,8 @@
 
 [build.environment]
   NODE_VERSION = "18"
+  # Disable secret scanning for non-sensitive config values
+  SECRETS_SCAN_OMIT_KEYS = "MODEL,LANGUAGE,VECTOR_STORE_ID,VERBOSE_OPENAI"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"

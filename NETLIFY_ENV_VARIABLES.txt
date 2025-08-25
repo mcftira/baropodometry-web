@@ -1,0 +1,45 @@
+===============================================
+NETLIFY ENVIRONMENT VARIABLES - COPY & PASTE
+===============================================
+
+Copy these key-value pairs into Netlify's Environment Variables:
+
+OPENAI_API_KEY=sk-your-openai-api-key-here
+MODEL=gpt-5
+LANGUAGE=English
+VECTOR_STORE_ID=vs_688ced7042548191997d956b277fd0e0
+VERBOSE_OPENAI=false
+
+===============================================
+INSTRUCTIONS:
+===============================================
+
+1. Go to your Netlify Dashboard
+2. Select your site
+3. Go to "Site configuration" → "Environment variables"
+4. Click "Add environment variables"
+5. Paste the content above into the import box
+6. Replace "sk-your-openai-api-key-here" with your actual OpenAI API key
+7. Click "Import variables"
+8. Deploy or redeploy your site
+
+===============================================
+VARIABLE DESCRIPTIONS:
+===============================================
+
+OPENAI_API_KEY (REQUIRED)
+- Your OpenAI API key from https://platform.openai.com/api-keys
+- Must start with "sk-"
+
+MODEL (Optional, default: gpt-5)
+- Options: gpt-5, gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-3.5-turbo
+
+LANGUAGE (Optional, default: English)
+- Options: English, Hungarian
+
+VECTOR_STORE_ID (Optional, default: vs_688ced7042548191997d956b277fd0e0)
+- Your custom vector store ID for knowledge base
+- Use default unless you have your own
+
+VERBOSE_OPENAI (Optional, default: false)
+- Set to true to enable detailed API logging in Debug Logs viewer

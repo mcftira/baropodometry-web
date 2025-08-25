@@ -1,0 +1,59 @@
+# ===============================================
+# Baropodometry Analyzer - Environment Variables
+# ===============================================
+# Copy these variables to Netlify's Environment Variables
+# Or create a .env.local file for local development
+
+# -----------------------------------------------
+# REQUIRED: OpenAI API Configuration
+# -----------------------------------------------
+# Your OpenAI API key (starts with sk-)
+# Get it from: https://platform.openai.com/api-keys
+OPENAI_API_KEY=sk-your-openai-api-key-here
+
+# -----------------------------------------------
+# OPTIONAL: Model Configuration
+# -----------------------------------------------
+# OpenAI model to use for analysis
+# Options: gpt-5, gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-3.5-turbo
+# Default: gpt-5
+MODEL=gpt-5
+
+# -----------------------------------------------
+# OPTIONAL: Language Setting
+# -----------------------------------------------
+# Language for the clinical reports
+# Options: English, Hungarian
+# Default: English
+LANGUAGE=English
+
+# -----------------------------------------------
+# OPTIONAL: Vector Store Configuration
+# -----------------------------------------------
+# Vector store ID for knowledge base (RAG)
+# Default: vs_688ced7042548191997d956b277fd0e0 (clinic knowledge base)
+# Leave as default unless you have your own vector store
+VECTOR_STORE_ID=vs_688ced7042548191997d956b277fd0e0
+
+# -----------------------------------------------
+# OPTIONAL: Debug Settings
+# -----------------------------------------------
+# Enable verbose OpenAI logging (shows full API payloads)
+# Options: true, false, 1, 0
+# Default: false
+VERBOSE_OPENAI=false
+
+# -----------------------------------------------
+# NOTES FOR NETLIFY DEPLOYMENT:
+# -----------------------------------------------
+# 1. In Netlify Dashboard, go to Site Settings > Environment Variables
+# 2. Add each variable above (without the # comments)
+# 3. At minimum, you MUST set OPENAI_API_KEY
+# 4. Other variables will use defaults if not set
+# 5. Do NOT commit actual keys to Git - only use this template
+#
+# For local development:
+# 1. Copy this file to .env.local
+# 2. Fill in your actual values
+# 3. .env.local is gitignored and won't be committed
+# -----------------------------------------------
