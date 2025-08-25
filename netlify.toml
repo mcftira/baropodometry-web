@@ -1,14 +1,20 @@
 [build]
   command = "npm run build"
-  publish = ".next"
 
 [build.environment]
   NODE_VERSION = "18"
   # Disable secret scanning for non-sensitive config values
   SECRETS_SCAN_OMIT_KEYS = "MODEL,LANGUAGE,VECTOR_STORE_ID,VERBOSE_OPENAI"
+  # Required for sharp to work on Netlify
+  SHARP_IGNORE_GLOBAL_LIBVIPS = "true"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
-[functions]
-  included_files = ["src/**"]
+# Headers to ensure API routes work correctly
+[[headers]]
+  for = "/api/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Headers = "Content-Type"
+    Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"

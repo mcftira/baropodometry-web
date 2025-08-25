@@ -520,7 +520,7 @@ export default function Home() {
                   alert(`API Test Success!\n\n${data.message}\n\nOpenAI Key: ${data.env.hasOpenAIKey ? '✓ Set' : '✗ Missing'}\nModel: ${data.env.model}\nLanguage: ${data.env.language}`);
                 } catch (e) {
                   console.error("[UI] API test failed:", e);
-                  alert(`API test failed!\n\n${e.message}\n\nCheck console for details.`);
+                  alert(`API test failed!\n\n${e instanceof Error ? e.message : String(e)}\n\nCheck console for details.`);
                 }
               }}
               className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-md transition-colors flex items-center gap-1.5"
