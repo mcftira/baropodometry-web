@@ -381,12 +381,55 @@ export default function Home() {
       form.append("mode", mode);
       
       // Use regular API (not streaming)
-      const res = await fetch("/api/analyze", { 
+      const apiUrl = "/api/analyze";
+      console.log("[UI] Calling API:", apiUrl);
+      console.log("[UI] Request method: POST");
+      console.log("[UI] Form data keys:", Array.from(form.keys()));
+      console.log("[UI] Window location:", window.location.href);
+      
+      const res = await fetch(apiUrl, { 
         method: "POST", 
         body: form 
       });
       
-      const data = await res.json();
+      console.log("[UI] Response status:", res.status);
+      console.log("[UI] Response headers:", Object.fromEntries(res.headers.entries()));
+      console.log("[UI] Response URL:", res.url);
+      console.log("[UI] Response type:", res.type);
+      
+      // Check if response is HTML instead of JSON
+      const contentType = res.headers.get("content-type");
+      console.log("[UI] Content-Type:", contentType);
+      
+      // Check for HTML error response
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await res.text();
+        console.error("[UI] ERROR: Expected JSON but got:", contentType);
+        console.error("[UI] Response body (first 500 chars):", text.substring(0, 500));
+        
+        if (text.includes("<!DOCTYPE") || text.includes("<html")) {
+          console.error("[UI] ERROR: Received HTML instead of JSON. API route not found.");
+          setError("API route not found. The server returned HTML instead of JSON. This usually means the API endpoint doesn't exist or isn't configured properly on Netlify.");
+          setLoading(false);
+          return;
+        }
+        
+        setError(`Invalid response type: ${contentType}. Expected JSON. Response: ${text.substring(0, 200)}`);
+        setLoading(false);
+        return;
+      }
+      
+      let data;
+      try {
+        data = await res.json();
+      } catch (jsonError) {
+        console.error("[UI] Failed to parse JSON:", jsonError);
+        const text = await res.text();
+        console.error("[UI] Raw response:", text.substring(0, 500));
+        setError("Failed to parse server response as JSON");
+        setLoading(false);
+        return;
+      }
       dlog("/api/analyze status:", res.status, "keys:", Object.keys(data||{}));
       if (data?.data) {
         const d = data.data;
@@ -452,6 +495,39 @@ export default function Home() {
             <h1 className="text-2xl font-semibold tracking-tight">Baropodometry Analyzer Web</h1>
           </div>
           <div className="text-sm opacity-80 flex items-center gap-4">
+            <button 
+              onClick={async () => {
+                console.log("[UI] Testing API connection...");
+                try {
+                  const testUrl = "/api/test";
+                  console.log("[UI] Test URL:", testUrl);
+                  const res = await fetch(testUrl);
+                  console.log("[UI] Test response status:", res.status);
+                  console.log("[UI] Test response URL:", res.url);
+                  console.log("[UI] Test response headers:", Object.fromEntries(res.headers.entries()));
+                  
+                  const contentType = res.headers.get("content-type");
+                  if (!contentType || !contentType.includes("application/json")) {
+                    const text = await res.text();
+                    console.error("[UI] Test failed - not JSON. Content-Type:", contentType);
+                    console.error("[UI] Response body:", text.substring(0, 500));
+                    alert(`API Test Failed!\n\nExpected JSON but got ${contentType}\n\nThis means API routes are not working on Netlify.\n\nCheck console for details.`);
+                    return;
+                  }
+                  
+                  const data = await res.json();
+                  console.log("[UI] Test response data:", data);
+                  alert(`API Test Success!\n\n${data.message}\n\nOpenAI Key: ${data.env.hasOpenAIKey ? '✓ Set' : '✗ Missing'}\nModel: ${data.env.model}\nLanguage: ${data.env.language}`);
+                } catch (e) {
+                  console.error("[UI] API test failed:", e);
+                  alert(`API test failed!\n\n${e.message}\n\nCheck console for details.`);
+                }
+              }}
+              className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-md transition-colors flex items-center gap-1.5"
+            >
+              <Zap className="h-4 w-4" />
+              Test API
+            </button>
             <a href="/settings" className="flex items-center gap-1.5 underline underline-offset-4 hover:opacity-100 transition-opacity">
               <Zap className="h-4 w-4" />
               Settings
