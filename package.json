@@ -19,13 +19,11 @@
     "lucide-react": "^0.540.0",
     "next": "15.4.6",
     "openai": "^5.12.2",
-    "pdf-to-img": "^4.5.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-markdown": "^10.1.0",
     "recharts": "^3.1.2",
-    "remark-gfm": "^4.0.1",
-    "sharp": "^0.34.3"
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

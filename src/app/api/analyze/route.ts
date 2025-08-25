@@ -1,7 +1,5 @@
 import { NextRequest } from "next/server";
 import { getDefaultSettings } from "@/lib/server-config";
-import { pdf } from "pdf-to-img";
-import sharp from "sharp";
 import crypto from "crypto";
 
 export const runtime = "nodejs";
@@ -13,34 +11,6 @@ function toBase64DataUrl(name: string, mime: string, buffer: Buffer) {
     filename: name || "file.pdf",
     file_data: `data:${mime || "application/pdf"};base64,${base64}`
   } as const;
-}
-
-// Convert PDF pages to base64 images
-async function pdfToImages(pdfBuffer: Buffer, pagesToExtract: number[] = [1, 2, 3, 4, 5, 8]): Promise<string[]> {
-  try {
-    const doc = await pdf(pdfBuffer, { scale: 2.0 }); // scale: 2.0 for higher quality
-    const images: string[] = [];
-    
-    let pageNumber = 1;
-    for await (const page of doc) {
-      // pdf-to-img pages are 1-indexed
-      if (pagesToExtract.includes(pageNumber)) {
-        // Page is already a Buffer from pdf-to-img
-        const pngBuffer = await sharp(Buffer.from(page))
-          .png({ quality: 100, compressionLevel: 0 })
-          .toBuffer();
-        
-        const base64 = pngBuffer.toString('base64');
-        images.push(`data:image/png;base64,${base64}`);
-      }
-      pageNumber++;
-    }
-    
-    return images;
-  } catch (error) {
-    console.error('Error converting PDF to images:', error);
-    return [];
-  }
 }
 
 // --- Deep logging helpers ---
@@ -426,21 +396,18 @@ Prompt 1 — Extraction & Pre-Analysis (JSON only)
 ROLE
 You are a baropodometric/stabilometric extraction agent.
 
-INPUTS (process SEQUENTIALLY)
-1) PDFs (PARSE FIRST for all text/table data)
+INPUTS
+PDFs (with embedded text and visual elements)
    • Same subject, three reports:
      A = Neutral / Eyes Open
      B = Closed Eyes
      C = Closed Eyes + Cotton Rolls
-   • Use PDF text/OCR only to extract ALL numbers/tables on pages 1,2,3,4,5,6,8.
-
-2) PNG images (USE SECOND for visual interpretation ONLY)
-   • High-resolution screenshots of pages 1,2,3,4,5,6,8.
-   • Use ONLY for qualitative descriptions of plots/heatmaps (no numbers).
+   • Extract ALL text/numbers/tables from pages 1,2,3,4,5,6,8.
+   • Analyze visual elements (plots/heatmaps) for qualitative observations.
 
 MANDATORY ORDER
 STEP 1: Parse PDFs → capture all printed text/numbers/tables.
-STEP 2: Inspect images → add visual (qualitative) observations only.
+STEP 2: Analyze visual elements → add qualitative observations (plots/heatmaps).
 STEP 3: Merge into a single structured JSON.
 
 SCOPE
@@ -479,8 +446,8 @@ STRICT RULES
 
 DIAGNOSTIC REPORTING (before JSON)
 Provide these sections in plain text WITHOUT curly braces:
-1) PDF Parsing Phase — what tables/fields you captured by page.
-2) Image Analysis Phase — concise visual notes per page.
+1) PDF Processing — what tables/fields you captured by page.
+2) Visual Analysis — concise notes on plots/heatmaps per page.
 3) Issues Encountered — any ambiguities/reading problems.
 4) Missing Data — fields not present and why.
 5) Decision Rationale — how you chose less_stable_foot / dominant_plane.
@@ -793,9 +760,9 @@ export async function POST(req: NextRequest) {
     const { OpenAI } = await import("openai");
     const openai = new OpenAI({ apiKey: settings.apiKey });
 
-    // Prepare base64-embedded PDFs for Responses API and convert to images
+    // Prepare base64-embedded PDFs for Responses API
     const tPrep0 = Date.now();
-    console.log(`[analyze:${reqId}] Preparing base64-embedded PDFs and converting to images...`);
+    console.log(`[analyze:${reqId}] Preparing base64-embedded PDFs...`);
     const [neutralBuf, closedBuf, cottonBuf] = await Promise.all([
       Buffer.from(await neutral.arrayBuffer()),
       Buffer.from(await closed.arrayBuffer()),
@@ -804,14 +771,6 @@ export async function POST(req: NextRequest) {
 
     const sha12 = (b: Buffer) => crypto.createHash('sha256').update(b).digest('hex').slice(0, 12);
     console.log(`[analyze:${reqId}] Uploads → A(name=${neutral.name}, type=${neutral.type}, size=${neutral.size}, sha256_12=${sha12(neutralBuf)}), B(name=${closed.name}, type=${closed.type}, size=${closed.size}, sha256_12=${sha12(closedBuf)}), C(name=${cotton.name}, type=${cotton.type}, size=${cotton.size}, sha256_12=${sha12(cottonBuf)})`);
-
-    // Convert PDFs to images for better visual interpretation
-    console.log(`[analyze:${reqId}] Converting PDFs to high-quality images for pages 1,2,3,4,5,6,8...`);
-    const [neutralImages, closedImages, cottonImages] = await Promise.all([
-      pdfToImages(neutralBuf),
-      pdfToImages(closedBuf),
-      pdfToImages(cottonBuf),
-    ]);
 
     const files = [
       toBase64DataUrl(neutral.name, neutral.type || "application/pdf", neutralBuf),
@@ -823,11 +782,7 @@ export async function POST(req: NextRequest) {
     const model = settings.model || "gpt-5"; // Agent 2 default
     const extractionModel = "gpt-5-mini"; // Agent 1 uses mini for higher TPM
     const tPrep1 = Date.now();
-    console.log(`[analyze:${reqId}] Prepared files and images in ${tPrep1 - tPrep0}ms`);
-    console.log(`[analyze:${reqId}] Images extracted: A=${neutralImages.length}, B=${closedImages.length}, C=${cottonImages.length}`);
-    if (neutralImages.length === 0 || closedImages.length === 0 || cottonImages.length === 0) {
-      console.warn(`[analyze:${reqId}] One or more image sets are empty. PDF-to-image may have failed.`);
-    }
+    console.log(`[analyze:${reqId}] Prepared files in ${tPrep1 - tPrep0}ms`);
 
     // First pass: Extraction analysis directly on PDFs
     console.log(`[analyze:${reqId}] Starting extraction (Agent 1) using model=${extractionModel} ...`);
@@ -1061,31 +1016,10 @@ No narrative. No diagnosis. No extra fields.`;
         role: "user",
         content: [
           { type: "input_text", text: extractionPrompt },
-          // PDFs
+          // PDFs - OpenAI will handle visual extraction internally
           { type: "input_file", filename: files[0].filename, file_data: files[0].file_data },
           { type: "input_file", filename: files[1].filename, file_data: files[1].file_data },
           { type: "input_file", filename: files[2].filename, file_data: files[2].file_data },
-          // Images for Test A (Neutral)
-          ...neutralImages.map((img, idx) => ({
-            type: "input_image" as const,
-            image: img,
-            detail: "high" as const,
-            alt_text: `Test A (Neutral) - Page ${[1,2,3,4,5,8][idx] || idx+1}`
-          })),
-          // Images for Test B (Closed Eyes)
-          ...closedImages.map((img, idx) => ({
-            type: "input_image" as const,
-            image: img,
-            detail: "high" as const,
-            alt_text: `Test B (Closed Eyes) - Page ${[1,2,3,4,5,8][idx] || idx+1}`
-          })),
-          // Images for Test C (Cotton Rolls)
-          ...cottonImages.map((img, idx) => ({
-            type: "input_image" as const,
-            image: img,
-            detail: "high" as const,
-            alt_text: `Test C (Cotton Rolls) - Page ${[1,2,3,4,5,8][idx] || idx+1}`
-          })),
         ]
       }
     ];

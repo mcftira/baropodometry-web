@@ -5,8 +5,6 @@
   NODE_VERSION = "18"
   # Disable secret scanning for non-sensitive config values
   SECRETS_SCAN_OMIT_KEYS = "MODEL,LANGUAGE,VECTOR_STORE_ID,VERBOSE_OPENAI"
-  # Required for sharp to work on Netlify
-  SHARP_IGNORE_GLOBAL_LIBVIPS = "true"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
