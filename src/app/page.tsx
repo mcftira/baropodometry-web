@@ -18,16 +18,115 @@ import {
   TrendingUp,
   BarChart3,
   Heart,
-  BookOpen,
-  Stethoscope,
-  ClipboardCheck,
   Download,
   RefreshCw,
-  XCircle,
   Info,
   Zap,
   Target
 } from "lucide-react";
+import MarkdownReport from "@/components/MarkdownReport";
+import ReportSummaryCard from "@/components/ReportSummaryCard";
+import DebugLogViewer from "@/components/DebugLogViewer";
+import PosturalRadarChart from "@/components/PosturalRadarChart";
+import RombergWaterfallChart from "@/components/RombergWaterfallChart";
+import VNStatusDistribution from "@/components/VNStatusDistribution";
+import LoadBalanceVisualization from "@/components/LoadBalanceVisualization";
+import FFTFrequencyDashboard from "@/components/FFTFrequencyDashboard";
+
+// Lightweight client-side debug logger (always on for troubleshooting)
+function dlog(...args: any[]) {
+  if (typeof window !== "undefined") {
+    // eslint-disable-next-line no-console
+    console.log("[UI]", ...args);
+  }
+}
+
+// Deep client-side network logger: logs all fetch requests/responses
+if (typeof window !== "undefined" && !(window as any).__fetchPatched) {
+  (window as any).__fetchPatched = true;
+  const nativeFetch = window.fetch.bind(window);
+
+  async function digestSha256Hex(buf: ArrayBuffer, take: number = 12): Promise<string> {
+    try {
+      const hash = await crypto.subtle.digest("SHA-256", buf);
+      const view = new Uint8Array(hash);
+      let hex = "";
+      for (let i = 0; i < view.length; i++) hex += view[i].toString(16).padStart(2, "0");
+      return hex.slice(0, take);
+    } catch {
+      return "sha-error";
+    }
+  }
+
+  function headersToObject(headers?: HeadersInit): Record<string, string> {
+    const out: Record<string, string> = {};
+    try {
+      if (!headers) return out;
+      const h = new Headers(headers as any);
+      h.forEach((v, k) => {
+        // Mask sensitive
+        if (k.toLowerCase() === "authorization") out[k] = v ? `${v.slice(0, 8)}…` : "";
+        else out[k] = v;
+      });
+    } catch {}
+    return out;
+  }
+
+  window.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    try {
+      const url = typeof input === "string" ? input : (input as Request).url || String(input);
+      const method = (init?.method || (input as Request)?.method || "GET").toUpperCase();
+      const hdrs = headersToObject(init?.headers || (input as Request)?.headers as any);
+      let bodyInfo: any = null;
+
+      if (init?.body instanceof FormData) {
+        const fd = init.body as FormData;
+        const items: any[] = [];
+        const promises: Promise<void>[] = [];
+        fd.forEach((v, k) => {
+          if (v instanceof File) {
+            const file: File = v as File;
+            const info: any = { key: k, name: file.name, type: file.type, size: file.size, sha256_12: "" };
+            const p = file.arrayBuffer().then((buf) => digestSha256Hex(buf).then((hex) => { info.sha256_12 = hex; }));
+            promises.push(p);
+            items.push(info);
+          } else {
+            items.push({ key: k, value: String(v) });
+          }
+        });
+        await Promise.all(promises);
+        bodyInfo = { type: "FormData", items };
+      } else if (typeof init?.body === "string") {
+        bodyInfo = { type: "string", length: init.body.length, content: init.body };
+      } else if (init?.body && typeof (init.body as any).getReader === "function") {
+        bodyInfo = { type: "stream" };
+      }
+
+      dlog("[NET] →", method, url, { headers: hdrs, body: bodyInfo });
+
+      const res = await nativeFetch(input as any, init);
+      const resClone = res.clone();
+      const contentType = resClone.headers.get("content-type") || "";
+      let body: any = null;
+      try {
+        if (contentType.includes("application/json")) body = await resClone.text();
+        else if (contentType.startsWith("text/")) body = await resClone.text();
+        else body = `<${contentType || "binary"}> bytes=${(await resClone.arrayBuffer()).byteLength}`;
+      } catch (e) {
+        body = `<unreadable: ${String(e)}>\n`;
+      }
+      dlog("[NET] ←", method, url, {
+        status: res.status,
+        headers: headersToObject(res.headers as any),
+        body
+      });
+      return res;
+    } catch (err) {
+      dlog("[NET] fetch error:", err);
+      throw err;
+    }
+  }) as typeof window.fetch;
+}
 
 type Stage = "neutral" | "closed_eyes" | "cotton_rolls";
 type AnalysisMode = "normal" | "comparison";
@@ -41,9 +140,6 @@ interface StageData {
   swayDensity?: Record<string, unknown>;
   globalSynthesis?: Record<string, unknown>;
   visualAnalysis?: Record<string, unknown>;
-  // Legacy fields for backward compatibility
-  textMetrics?: Record<string, unknown>;
-  visionMetrics?: Record<string, unknown>;
 }
 
 interface ComparisonData {
@@ -91,14 +187,17 @@ export default function Home() {
   const [currentMessageIndex, setCurrentMessageIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AnalysisResult | null>(null);
-  const [showRaw, setShowRaw] = useState(false);
+
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("normal");
 
   // Derive structured extraction JSON if available
   const extracted = (() => {
     const r: any = result as any;
     if (!r) return undefined;
-    if (r.extractionReportJson) return r.extractionReportJson;
+    if (r.extractionReportJson) {
+      dlog("extracted from extractionReportJson", Object.keys(r.extractionReportJson || {}));
+      return r.extractionReportJson;
+    }
     const text: string | undefined = r.extractionReportText;
     if (!text) return undefined;
     const trimFences = (s: string) => {
@@ -111,24 +210,42 @@ export default function Home() {
       const k = s.indexOf("{");
       return k >= 0 ? s.substring(k) : s;
     };
-    try { return JSON.parse(trimFences(text)); } catch { return undefined; }
+    try {
+      const parsed = JSON.parse(trimFences(text));
+      dlog("extracted parsed from text", parsed ? Object.keys(parsed) : null);
+      return parsed;
+    } catch (e) {
+      dlog("extracted parse error", e);
+      return undefined;
+    }
   })();
+
+  const hasRespReports = Boolean(extracted || result?.augmentedReportText);
 
   // Small helpers for safe access/formatting
   const getNumber = (v: any): string => (typeof v === "number" ? v.toFixed(2) : "—");
   const getPct = (v: any): string => (typeof v === "string" ? v : v == null ? "" : String(v));
   const pickGlobals = (test: any) => {
     const p1 = test?.page1 || {};
-    const globals = p1.globals || p1; // support legacy flat shape
-    return globals;
+    // Handle new nested structure where metrics are in global_metrics with value/vn_status objects
+    if (p1.global_metrics) {
+      // Extract just the values from the nested structure
+      const flattened: any = {};
+      Object.entries(p1.global_metrics).forEach(([key, data]: [string, any]) => {
+        if (data && typeof data === 'object' && 'value' in data) {
+          flattened[key] = data.value;
+        } else {
+          flattened[key] = data;
+        }
+      });
+      return flattened;
+    }
+    // Fallback to legacy structure
+    return p1.globals || p1;
   };
   const pickLoads = (test: any) => {
     const p1 = test?.page1 || {};
     return p1.loads || p1;
-  };
-  const pickFeet = (test: any) => {
-    const p2 = test?.page2 || {};
-    return { left: p2.left || p2, right: p2.right || p2 };
   };
   const cmp = extracted?.comparisons;
   const cmpFmt = (o?: any) => (o && o.ratio != null ? `${Number(o.ratio).toFixed(2)} (${getPct(o.pct_change)})` : "—");
@@ -153,12 +270,18 @@ export default function Home() {
     };
     const cls = map[status] || "bg-gray-50 text-gray-700 border-gray-200";
     return (
-      <span className={`px-1.5 py-0.5 rounded border text-[10px] ${cls}`}>{status}</span>
+      <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] whitespace-nowrap ${cls}`}>{status}</span>
     );
   }
 
   // V.N. status helpers
   const getVNStatus = (test: any, key: string): string | undefined => {
+    const p1 = test?.page1 || {};
+    // Handle new nested structure
+    if (p1.global_metrics && p1.global_metrics[key]) {
+      return p1.global_metrics[key].vn_status;
+    }
+    // Fallback to legacy flat structure
     const g = pickGlobals(test) || {};
     return g?.[`${key}_vn_status`];
   };
@@ -169,6 +292,26 @@ export default function Home() {
       setCurrentMessageIndex(statusMessages.length - 1);
     }
   }, [statusMessages]);
+
+  // Debug: log render gates and expose globals for inspection
+  useEffect(() => {
+    (window as any).__analysisMode = analysisMode;
+    (window as any).__result = result;
+    (window as any).__extracted = extracted;
+    dlog("render gate → analysisMode:", analysisMode,
+      "has result:", !!result,
+      "extracted?:", !!extracted,
+      "augTextLen:", (result?.augmentedReportText || "").length,
+      "keys(result):", result ? Object.keys(result as any) : null);
+  }, [analysisMode, result, extracted]);
+
+  // Debug: track main visibility gate
+  useEffect(() => {
+    dlog("visibility gate → hasRespReports:", hasRespReports, {
+      extracted: !!extracted,
+      augmented: !!(result?.augmentedReportText)
+    });
+  }, [hasRespReports, extracted, result?.augmentedReportText]);
 
   function onPick(stage: Stage, f?: File) {
     setFiles((prev) => ({ ...prev, [stage]: f }));
@@ -244,6 +387,13 @@ export default function Home() {
       });
       
       const data = await res.json();
+      dlog("/api/analyze status:", res.status, "keys:", Object.keys(data||{}));
+      if (data?.data) {
+        const d = data.data;
+        dlog("payload sizes → extractionTextLen:", (d.extractionReportText||"").length, 
+          "augTextLen:", (d.augmentedReportText||"").length,
+          "has extractionReportJson:", !!d.extractionReportJson);
+      }
       
       if (!res.ok) {
         // Parse specific error types
@@ -273,6 +423,9 @@ export default function Home() {
         await new Promise(resolve => setTimeout(resolve, 1000));
         
         setResult(data.data);
+        // Also mirror to window for manual inspection
+        (window as any).__lastEnv = data;
+        (window as any).__result = data.data;
         setStatusMessages([]);
       } else {
         throw new Error(data.error || "Invalid response");
@@ -586,9 +739,6 @@ export default function Home() {
                             if (data.swayDensity) sections.push("Sway Density");
                             if (data.globalSynthesis) sections.push("Global Synthesis");
                             if (data.visualAnalysis) sections.push("Visual Analysis");
-                            // Legacy support
-                            if (data.textMetrics) sections.push("Text Metrics");
-                            if (data.visionMetrics) sections.push("Vision Metrics");
                             
                             return sections.length > 0 && (
                               <p className="opacity-60 text-[10px]">
@@ -610,16 +760,17 @@ export default function Home() {
             {result.comparisons?.summary && (
               <section className="glass-card p-6">
                 <h3 className="text-lg font-medium mb-3">Clinical Summary</h3>
-                <p className="text-sm whitespace-pre-wrap">{result.comparisons.summary}</p>
+                <MarkdownReport content={result.comparisons.summary} className="mt-2" />
               </section>
             )}
 
-            {/* Clinical Report for Stage Analysis Mode (legacy JSON result) */}
-            {analysisMode === "normal" && result.interpretation && (
+            {/* Responses API reports (Objective + Augmented) */}
+            {hasRespReports && (
               <div className="space-y-4">
-            {/* Human-readable reports */}
-            {(extracted || result.augmentedReportText) && (
-              <div className="grid gap-4 md:grid-cols-2">
+                {/* Summary Card */}
+                <ReportSummaryCard extracted={extracted} augmentedText={result.augmentedReportText} />
+                
+                {/* Objective Findings - Show First */}
                 {extracted && (
                   <section className="glass-card p-6">
                     <h3 className="text-lg font-medium mb-3">Objective Findings (from PDFs)</h3>
@@ -633,32 +784,63 @@ export default function Home() {
                         </div>
                       )}
                       {/* Condition summary cards */}
-                      <div className="grid gap-3 md:grid-cols-3">
+                      <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
                         {(["A","B","C"] as const).map((k) => {
                           const t = extracted.tests?.[k];
                           if (!t) return null;
                           const g = pickGlobals(t);
                           const loads = pickLoads(t);
                           return (
-                            <div key={k} className="p-4 rounded border bg-white/70 space-y-2">
-                              <h4 className="text-xs font-semibold mb-2">{k === "A" ? "Neutral" : k === "B" ? "Closed Eyes" : "Cotton Rolls"}</h4>
-                              <div className="grid grid-cols-2 gap-2">
+                            <div key={k} className="p-4 rounded border bg-white/70">
+                              <h4 className="text-sm font-semibold mb-3">{k === "A" ? "Neutral" : k === "B" ? "Closed Eyes" : "Cotton Rolls"}</h4>
+                              <div className="space-y-4">
                                 <div>
-                                  <div className="text-[11px] opacity-70 mb-1">Key Vitals</div>
-                                  <ul className="text-xs space-y-1">
-                                    <li className="flex items-center gap-2"><strong>Length</strong> {getNumber(g.length_mm)} mm <VNChip status={getVNStatus(t, "length_mm")} /></li>
-                                    <li className="flex items-center gap-2"><strong>Area</strong> {getNumber(g.area_mm2)} mm² <VNChip status={getVNStatus(t, "area_mm2")} /></li>
-                                    <li className="flex items-center gap-2"><strong>Velocity</strong> {getNumber(g.velocity_mm_s)} mm/s <VNChip status={getVNStatus(t, "velocity_mm_s")} /></li>
-                                    <li className="flex items-center gap-2"><strong>L/S</strong> {getNumber(g.l_s_ratio)} <VNChip status={getVNStatus(t, "l_s_ratio")} /></li>
-                                    <li className="flex items-center gap-2"><strong>LFS</strong> {getNumber(g.lfs)} <VNChip status={getVNStatus(t, "lfs")} /></li>
-                                  </ul>
+                                  <div className="text-xs text-gray-600 mb-2">Key Vitals</div>
+                                  <div className="space-y-1.5">
+                                    <div className="grid grid-cols-[60px_45px_30px_auto] gap-1 items-center text-xs">
+                                      <span className="font-medium">Length:</span>
+                                      <span className="text-right">{getNumber(g.length_mm)}</span>
+                                      <span className="text-gray-500">mm</span>
+                                      <VNChip status={getVNStatus(t, "length_mm")} />
+                                    </div>
+                                    <div className="grid grid-cols-[60px_45px_30px_auto] gap-1 items-center text-xs">
+                                      <span className="font-medium">Area:</span>
+                                      <span className="text-right">{getNumber(g.area_mm2)}</span>
+                                      <span className="text-gray-500">mm²</span>
+                                      <VNChip status={getVNStatus(t, "area_mm2")} />
+                                    </div>
+                                    <div className="grid grid-cols-[60px_45px_30px_auto] gap-1 items-center text-xs">
+                                      <span className="font-medium">Velocity:</span>
+                                      <span className="text-right">{getNumber(g.velocity_mm_s)}</span>
+                                      <span className="text-gray-500">mm/s</span>
+                                      <VNChip status={getVNStatus(t, "velocity_mm_s")} />
+                                    </div>
+                                    <div className="grid grid-cols-[60px_45px_30px_auto] gap-1 items-center text-xs">
+                                      <span className="font-medium">L/S:</span>
+                                      <span className="text-right">{getNumber(g.l_s_ratio)}</span>
+                                      <span></span>
+                                      <VNChip status={getVNStatus(t, "l_s_ratio")} />
+                                    </div>
+                                    <div className="grid grid-cols-[60px_45px_30px_auto] gap-1 items-center text-xs">
+                                      <span className="font-medium">LFS:</span>
+                                      <span className="text-right">{getNumber(g.lfs)}</span>
+                                      <span></span>
+                                      <VNChip status={getVNStatus(t, "lfs")} />
+                                    </div>
+                                  </div>
                                 </div>
                                 <div>
-                                  <div className="text-[11px] opacity-70 mb-1">Loads & Pressures</div>
-                                  <ul className="text-xs space-y-1">
-                                    <li><strong>Loads</strong> L {getNumber(loads.left_load_pct)}% / R {getNumber(loads.right_load_pct)}%</li>
-                                    <li><strong>Mean P</strong> L {getNumber(loads.left_mean_pressure)} / R {getNumber(loads.right_mean_pressure)}</li>
-                                  </ul>
+                                  <div className="text-xs text-gray-600 mb-2">Loads & Pressures</div>
+                                  <div className="space-y-1">
+                                    <div className="text-xs flex items-center justify-between">
+                                      <span className="font-medium">Loads:</span>
+                                      <span>L {getNumber(loads.page6_left_load_pct)}% / R {getNumber(loads.page6_right_load_pct)}%</span>
+                                    </div>
+                                    <div className="text-xs flex items-center justify-between">
+                                      <span className="font-medium">Mean P:</span>
+                                      <span>L {getNumber(loads.left_mean_pressure)} / R {getNumber(loads.right_mean_pressure)}</span>
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -668,26 +850,38 @@ export default function Home() {
                       {/* Comparisons */}
                       {extracted.comparisons && (
                         <div className="mt-2">
-                          <h4 className="text-xs font-semibold mb-2">Computed Comparisons</h4>
-                          <div className="grid gap-2 md:grid-cols-2">
-                            <div className="p-3 rounded border bg-white/60">
-                              <h5 className="text-xs font-semibold mb-2">Romberg B/A</h5>
+                          <h4 className="text-sm font-semibold mb-3">Computed Comparisons</h4>
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <div className="p-4 rounded border bg-white/60">
+                              <h5 className="text-sm font-semibold mb-3">Romberg B/A</h5>
                               {(() => { const rb = cmp?.romberg_b_over_a || {}; return (
-                                <ul className="text-xs space-y-1">
-                                  <li>Length {cmpFmt(rb.length_mm)}, Area {cmpFmt(rb.area_mm2)}, Velocity {cmpFmt(rb.velocity_mm_s)}</li>
-                                  <li>L/S {cmpFmt(rb.l_s_ratio)}, LFS {cmpFmt(rb.lfs)}, AP accel {cmpFmt(rb.ap_acceleration_mm_s2)}</li>
-                                  <li>Ellipse A/P Δ {cmpAngleFmt(rb.ellipse_ap_deviation_deg)}</li>
-                                </ul>
+                                <div className="space-y-2 text-xs">
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div>Length: {cmpFmt(rb.length_mm)}</div>
+                                    <div>Area: {cmpFmt(rb.area_mm2)}</div>
+                                    <div>Velocity: {cmpFmt(rb.velocity_mm_s)}</div>
+                                    <div>L/S: {cmpFmt(rb.l_s_ratio)}</div>
+                                    <div>LFS: {cmpFmt(rb.lfs)}</div>
+                                    <div>AP accel: {cmpFmt(rb.ap_acceleration_mm_s2)}</div>
+                                  </div>
+                                  <div>Ellipse A/P Δ: {cmpAngleFmt(rb.ellipse_ap_deviation_deg)}</div>
+                                </div>
                               ); })()}
                             </div>
-                            <div className="p-3 rounded border bg-white/60">
-                              <h5 className="text-xs font-semibold mb-2">Cotton C/B</h5>
+                            <div className="p-4 rounded border bg-white/60">
+                              <h5 className="text-sm font-semibold mb-3">Cotton C/B</h5>
                               {(() => { const cb = cmp?.cotton_c_over_b || {}; return (
-                                <ul className="text-xs space-y-1">
-                                  <li>Length {cmpFmt(cb.length_mm)}, Area {cmpFmt(cb.area_mm2)}, Velocity {cmpFmt(cb.velocity_mm_s)}</li>
-                                  <li>L/S {cmpFmt(cb.l_s_ratio)}, LFS {cmpFmt(cb.lfs)}, AP accel {cmpFmt(cb.ap_acceleration_mm_s2)}</li>
-                                  <li>Ellipse A/P Δ {cmpAngleFmt(cb.ellipse_ap_deviation_deg)}</li>
-                                </ul>
+                                <div className="space-y-2 text-xs">
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div>Length: {cmpFmt(cb.length_mm)}</div>
+                                    <div>Area: {cmpFmt(cb.area_mm2)}</div>
+                                    <div>Velocity: {cmpFmt(cb.velocity_mm_s)}</div>
+                                    <div>L/S: {cmpFmt(cb.l_s_ratio)}</div>
+                                    <div>LFS: {cmpFmt(cb.lfs)}</div>
+                                    <div>AP accel: {cmpFmt(cb.ap_acceleration_mm_s2)}</div>
+                                  </div>
+                                  <div>Ellipse A/P Δ: {cmpAngleFmt(cb.ellipse_ap_deviation_deg)}</div>
+                                </div>
                               ); })()}
                             </div>
                           </div>
@@ -716,10 +910,22 @@ export default function Home() {
                     </div>
                   </section>
                 )}
+
+                {/* Clinical Interpretation - Show Second */}
                 {result.augmentedReportText && (
                   <section className="glass-card p-6">
-                    <h3 className="text-lg font-medium mb-3">Clinical Interpretation & Diagnosis</h3>
-                    <div className="text-sm whitespace-pre-wrap leading-relaxed">{result.augmentedReportText}</div>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-lg font-medium">Clinical Interpretation & Diagnosis</h3>
+                      <button 
+                        onClick={() => window.print()}
+                        className="text-xs px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors print:hidden"
+                      >
+                        🖨️ Print Report
+                      </button>
+                    </div>
+                    <div className="max-h-[600px] overflow-y-auto pr-2 print:max-h-none print:overflow-visible">
+                      <MarkdownReport content={result.augmentedReportText} className="mt-4" />
+                    </div>
                     <div className="mt-4 flex flex-wrap gap-2 text-xs">
                       <span className="px-2 py-1 rounded-full bg-emerald-50 border border-emerald-200">Diagnosis</span>
                       <span className="px-2 py-1 rounded-full bg-blue-50 border border-blue-200">Evidence</span>
@@ -727,101 +933,89 @@ export default function Home() {
                     </div>
                   </section>
                 )}
+
+                {/* Data Visualizations */}
+                {extracted && (
+                  <section className="glass-card p-6">
+                    <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
+                      <BarChart3 className="h-5 w-5" />
+                      Data Analysis & Visualizations
+                    </h3>
+                    
+                    <div className="grid gap-6 lg:grid-cols-2">
+                      {/* Postural Radar Chart */}
+                      <div className="bg-white p-4 rounded-lg border border-gray-200">
+                        <PosturalRadarChart data={extracted.tests} />
+                      </div>
+                      
+                      {/* Romberg/Cotton Waterfall */}
+                      <div className="bg-white p-4 rounded-lg border border-gray-200">
+                        <RombergWaterfallChart 
+                          romberg={extracted.comparisons?.romberg_b_over_a}
+                          cotton={extracted.comparisons?.cotton_c_over_b}
+                        />
+                      </div>
+                      
+                      {/* VN Status Distribution */}
+                      <div className="bg-white p-4 rounded-lg border border-gray-200">
+                        <VNStatusDistribution data={extracted.tests} />
+                      </div>
+                      
+                      {/* Load Balance Visualization */}
+                      <div className="bg-white p-4 rounded-lg border border-gray-200">
+                        <LoadBalanceVisualization data={extracted.tests} />
+                      </div>
+                    </div>
+                    
+                    {/* FFT Frequency Analysis - Full Width */}
+                    <div className="mt-6 bg-white p-4 rounded-lg border border-gray-200">
+                      <FFTFrequencyDashboard data={extracted.tests} />
+                    </div>
+                    
+                    {/* Sensory System Summary */}
+                    {extracted.comparisons?.sensory_ranking && (
+                      <div className="mt-6 p-4 bg-blue-50 rounded-lg">
+                        <h4 className="text-sm font-medium text-gray-700 mb-2">Sensory System Ranking</h4>
+                        <div className="flex items-center gap-2">
+                          <span className="px-3 py-1 bg-blue-500 text-white rounded-full text-xs font-medium">
+                            Primary: {extracted.comparisons.sensory_ranking.primary}
+                          </span>
+                          <span className="text-gray-400">→</span>
+                          <span className="px-3 py-1 bg-blue-400 text-white rounded-full text-xs font-medium">
+                            Secondary: {extracted.comparisons.sensory_ranking.secondary}
+                          </span>
+                          <span className="text-gray-400">→</span>
+                          <span className="px-3 py-1 bg-blue-300 text-white rounded-full text-xs font-medium">
+                            Minor: {extracted.comparisons.sensory_ranking.minor}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </section>
+                )}
+
+                {/* Debug Logs Viewer (when verbose mode is enabled) */}
+                {((result as any)?.debug?.verboseLogs) && (
+                  <DebugLogViewer 
+                    logs={(result as any).debug.verboseLogs || []}
+                    extractionDiagnostics={(result as any).debug?.extractionDiagnostics}
+                  />
+                )}
+                
+                {/* Diagnostics (Agent 1) - Show only if verbose logs are not available */}
+                {((result as any)?.debug?.extractionDiagnostics && !(result as any)?.debug?.verboseLogs) && (
+                  <section className="glass-card p-6">
+                    <h3 className="text-lg font-medium mb-3 flex items-center gap-2"><Info className="h-5 w-5" /> Extraction Diagnostics</h3>
+                    <details>
+                      <summary className="text-sm cursor-pointer opacity-80 hover:opacity-100">Show detailed extraction log</summary>
+                      <pre className="text-xs whitespace-pre-wrap overflow-auto max-h-96 p-3 bg-gray-50 rounded font-mono mt-3">{(result as any).debug.extractionDiagnostics}</pre>
+                    </details>
+                  </section>
+                )}
               </div>
             )}
 
-            {/* Diagnostics (Agent 1) */}
-            {((result as any)?.debug?.extractionDiagnostics) && (
-              <section className="glass-card p-6">
-                <h3 className="text-lg font-medium mb-3 flex items-center gap-2"><Info className="h-5 w-5" /> Diagnostics</h3>
-                <details>
-                  <summary className="text-sm cursor-pointer opacity-80 hover:opacity-100">Show diagnostic log</summary>
-                  <pre className="text-xs whitespace-pre-wrap overflow-auto max-h-96 p-3 bg-gray-50 rounded font-mono mt-3">{(result as any).debug.extractionDiagnostics}</pre>
-                </details>
-              </section>
-            )}
-                {result.interpretation.vision_findings && (
-                  <section className="glass-card p-6">
-                    <h3 className="text-lg font-medium mb-3 flex items-center gap-2">
-                      <Eye className="h-5 w-5 text-blue-600" />
-                      Vision Findings
-                    </h3>
-                    <p className="text-sm whitespace-pre-wrap">{result.interpretation.vision_findings}</p>
-                  </section>
-                )}
-                
-                {result.interpretation.clinical_interpretation && (
-                  <section className="glass-card p-6">
-                    <h3 className="text-lg font-medium mb-3 flex items-center gap-2">
-                      <Brain className="h-5 w-5 text-purple-600" />
-                      Clinical Interpretation
-                    </h3>
-                    <p className="text-sm whitespace-pre-wrap">{result.interpretation.clinical_interpretation}</p>
-                  </section>
-                )}
-                
-                {result.interpretation.literature_support && (
-                  <section className="glass-card p-6">
-                    <h3 className="text-lg font-medium mb-3 flex items-center gap-2">
-                      <BookOpen className="h-5 w-5 text-green-600" />
-                      Literature Support
-                    </h3>
-                    <p className="text-sm whitespace-pre-wrap">{result.interpretation.literature_support}</p>
-                  </section>
-                )}
-                
-                {result.interpretation.conclusion && (
-                  <section className="glass-card p-6">
-                    <h3 className="text-lg font-medium mb-3 flex items-center gap-2">
-                      <ClipboardCheck className="h-5 w-5 text-orange-600" />
-                      Conclusion
-                    </h3>
-                    <p className="text-sm whitespace-pre-wrap">{result.interpretation.conclusion}</p>
-                  </section>
-                )}
-                
-                {result.interpretation.diagnosis && (
-                  <section className="glass-card p-6 bg-blue-50">
-                    <h3 className="text-lg font-medium mb-3 text-blue-900 flex items-center gap-2">
-                      <Stethoscope className="h-5 w-5" />
-                      Provisional Diagnosis
-                    </h3>
-                    <p className="text-sm whitespace-pre-wrap text-blue-800">{result.interpretation.diagnosis}</p>
-                    <p className="text-xs mt-3 opacity-70">Note: This is a provisional clinical impression. Clinical correlation and further evaluation are advised.</p>
-                  </section>
-                )}
-              </div>
-            )}
 
-            {/* Raw JSON Toggle */}
-            <section className="glass-card p-6">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-medium flex items-center gap-2">
-                  <Info className="h-5 w-5 text-gray-600" />
-                  Detailed Data
-                </h3>
-                <button 
-                  onClick={() => setShowRaw(!showRaw)}
-                  className="text-sm underline flex items-center gap-1.5 hover:text-blue-600 transition-colors"
-                >
-                  {showRaw ? <XCircle className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  {showRaw ? "Hide" : "Show"} Raw JSON
-                </button>
-              </div>
-              {showRaw && (
-                <>
-                  <h4 className="text-sm font-medium mb-2">Response Envelope</h4>
-                  <pre className="text-xs whitespace-pre-wrap overflow-auto max-h-96 p-3 bg-gray-50 rounded font-mono mb-3">
-                    {JSON.stringify(result, null, 2)}
-                  </pre>
-                  {extracted && (
-                    <pre className="text-xs whitespace-pre-wrap overflow-auto max-h-96 p-3 bg-gray-50 rounded font-mono">
-                      {JSON.stringify(extracted, null, 2)}
-                    </pre>
-                  )}
-                </>
-              )}
-            </section>
 
             {/* Export Options */}
             <div className="flex gap-3">

@@ -19,7 +19,8 @@ export default function SettingsPage() {
     useAssistants: true,
     vectorStoreId: "",
     assistantIdComparison: "",
-    assistantIdNormal: ""
+    assistantIdNormal: "",
+    verboseOpenAI: false
   });
   const [saved, setSaved] = useState(false);
 
@@ -37,6 +38,7 @@ export default function SettingsPage() {
             ...prev,
             model: (res.model as AppSettings["model"]) || prev.model,
             language: (res.language as AppSettings["language"]) || prev.language,
+            verboseOpenAI: Boolean(res.verboseOpenAI)
           }));
         }
       })
@@ -54,7 +56,8 @@ export default function SettingsPage() {
           apiKey: settings.apiKey,
           model: settings.model,
           language: settings.language,
-          vectorStoreId: settings.vectorStoreId
+          vectorStoreId: settings.vectorStoreId,
+          verboseOpenAI: Boolean(settings.verboseOpenAI)
         })
       }).catch(() => {});
     }
@@ -133,6 +136,17 @@ export default function SettingsPage() {
                   <option value="English">English</option>
                   <option value="Hungarian">Magyar</option>
                 </select>
+              </div>
+
+              <div className="pt-2">
+                <label className="inline-flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(settings.verboseOpenAI)}
+                    onChange={(e) => setSettings({ ...settings, verboseOpenAI: e.target.checked })}
+                  />
+                  Enable verbose OpenAI logging (request/response bodies). <span className="opacity-60">When enabled, a Debug Logs viewer will appear in the results page showing full API payloads and responses.</span>
+                </label>
               </div>
             </div>
           </div>

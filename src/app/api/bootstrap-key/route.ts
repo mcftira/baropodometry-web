@@ -10,6 +10,7 @@ type BootstrapBody = {
   language?: string;
   vectorStoreId?: string;
   rotate?: boolean;
+  verboseOpenAI?: boolean;
 };
 
 export async function POST(req: NextRequest) {
@@ -20,6 +21,7 @@ export async function POST(req: NextRequest) {
     const language = (body?.language || "").trim();
     const vectorStoreId = (body?.vectorStoreId || "").trim();
     const rotate = Boolean(body?.rotate);
+    const verboseOpenAI = Boolean(body?.verboseOpenAI);
 
     if (!apiKey) {
       return new Response(JSON.stringify({ ok: false, error: "Missing apiKey" }), {
@@ -36,7 +38,18 @@ export async function POST(req: NextRequest) {
 
     if (fs.existsSync(configPath) && !rotate) {
       // Already bootstrapped; do not overwrite
-      return new Response(JSON.stringify({ ok: true, alreadyConfigured: true }), {
+      // However we may need to merge verbose flag without overwriting api key
+      if (verboseOpenAI || model || language || vectorStoreId) {
+        try {
+          const prev = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+          if (model) prev.LLMConfig = { ...(prev.LLMConfig||{}), Model: model };
+          if (language) prev.Language = language;
+          if (vectorStoreId) prev.VectorStoreId = vectorStoreId;
+          if (typeof verboseOpenAI === "boolean") prev.VerboseOpenAI = verboseOpenAI;
+          fs.writeFileSync(configPath, JSON.stringify(prev, null, 2), "utf-8");
+        } catch {}
+      }
+      return new Response(JSON.stringify({ ok: true, alreadyConfigured: true, merged: true }), {
         status: 200,
         headers: { "content-type": "application/json" }
       });
@@ -50,6 +63,7 @@ export async function POST(req: NextRequest) {
     if (model) payload.LLMConfig.Model = model;
     if (language) payload.Language = language;
     if (vectorStoreId) payload.VectorStoreId = vectorStoreId;
+    if (typeof verboseOpenAI === "boolean") payload.VerboseOpenAI = verboseOpenAI;
 
     fs.writeFileSync(configPath, JSON.stringify(payload, null, 2), "utf-8");
 

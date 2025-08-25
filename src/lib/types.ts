@@ -6,6 +6,7 @@ export type AppSettings = {
   language?: "English" | "Hungarian";
   assistantIdComparison?: string;
   assistantIdNormal?: string;
+  verboseOpenAI?: boolean;
 };
 
 

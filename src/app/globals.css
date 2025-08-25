@@ -71,3 +71,41 @@ body {
 }
 .btn-primary:hover { background-color: color-mix(in oklab, var(--brand) 88%, black); }
 .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Print styles for reports */
+@media print {
+  .app-shell {
+    display: block;
+  }
+  
+  .glass-card {
+    box-shadow: none;
+    border: 1px solid #ddd;
+    page-break-inside: avoid;
+  }
+  
+  .markdown-report h1,
+  .markdown-report h2,
+  .markdown-report h3 {
+    page-break-after: avoid;
+  }
+  
+  .markdown-report p,
+  .markdown-report li {
+    orphans: 3;
+    widows: 3;
+  }
+  
+  header, footer, button, .print\:hidden {
+    display: none !important;
+  }
+  
+  body {
+    font-size: 11pt;
+    line-height: 1.5;
+  }
+  
+  .markdown-report {
+    max-width: 100%;
+  }
+}

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getDefaultSettings } from "@/lib/server-config";
 import { pdf } from "pdf-to-img";
 import sharp from "sharp";
+import crypto from "crypto";
 
 export const runtime = "nodejs";
 export const maxDuration = 60; // 60 seconds timeout for processing
@@ -41,6 +42,22 @@ async function pdfToImages(pdfBuffer: Buffer, pagesToExtract: number[] = [1, 2, 
     return [];
   }
 }
+
+// --- Deep logging helpers ---
+
+
+function truncateForLog(s: string, max = 1200, forceNoTruncate = false): string {
+  if (!s) return s as any;
+  // If verbose mode is on or force flag is set, don't truncate
+  const settings = getDefaultSettings() as any;
+  if (forceNoTruncate || settings?.verboseOpenAI) {
+    return s;
+  }
+  if (s.length <= max) return s;
+  return `${s.slice(0, max)}… [truncated ${s.length - max} chars]`;
+}
+
+
 
 // Simple 429 retry with exponential backoff + jitter
 async function withRetry<T>(fn: () => Promise<T>, label: string, maxAttempts = 5): Promise<T> {
@@ -103,6 +120,14 @@ const EXTRACTION_SCHEMA = {
         properties: {
           romberg_b_over_a: { $ref: "#/$defs/compBlock" },
           cotton_c_over_b: { $ref: "#/$defs/compBlock" },
+          sensory_ranking: {
+            type: "object",
+            properties: {
+              primary: { type: "string", enum: ["visual", "vestibular", "proprioceptive", "stomatognathic", "not_determinable"] },
+              secondary: { type: "string", enum: ["visual", "vestibular", "proprioceptive", "stomatognathic", "not_determinable"] },
+              minor: { type: "string", enum: ["visual", "vestibular", "proprioceptive", "stomatognathic", "not_determinable"] }
+            }
+          }
         },
       },
     },
@@ -111,7 +136,7 @@ const EXTRACTION_SCHEMA = {
       testBlock: {
         type: "object",
         additionalProperties: false,
-        required: ["metadata", "page1", "page2", "page3", "page4_fft", "page5_sdc", "page8_dashboard"],
+        required: ["metadata", "page1", "page2", "page3", "page4_fft", "page5_sdc", "page6_synthesis", "page8_dashboard"],
         properties: {
           metadata: {
             type: "object",
@@ -344,6 +369,15 @@ const EXTRACTION_SCHEMA = {
               sdc_note: { type: ["string", "null"] },
             },
           },
+          page6_synthesis: {
+            type: "object",
+            additionalProperties: false,
+            required: ["page6_left_load_pct", "page6_right_load_pct"],
+            properties: {
+              page6_left_load_pct: { type: ["number", "null"] },
+              page6_right_load_pct: { type: ["number", "null"] },
+            },
+          },
           page8_dashboard: {
             type: "object",
             additionalProperties: false,
@@ -398,10 +432,10 @@ INPUTS (process SEQUENTIALLY)
      A = Neutral / Eyes Open
      B = Closed Eyes
      C = Closed Eyes + Cotton Rolls
-   • Use PDF text/OCR only to extract ALL numbers/tables on pages 1,2,3,4,5,8.
+   • Use PDF text/OCR only to extract ALL numbers/tables on pages 1,2,3,4,5,6,8.
 
 2) PNG images (USE SECOND for visual interpretation ONLY)
-   • High-resolution screenshots of pages 1,2,3,4,5,8.
+   • High-resolution screenshots of pages 1,2,3,4,5,6,8.
    • Use ONLY for qualitative descriptions of plots/heatmaps (no numbers).
 
 MANDATORY ORDER
@@ -410,7 +444,7 @@ STEP 2: Inspect images → add visual (qualitative) observations only.
 STEP 3: Merge into a single structured JSON.
 
 SCOPE
-Use ONLY pages 1,2,3,4,5,8.
+Use ONLY pages 1,2,3,4,5,6,8.
 
 STRICT RULES
 • Extract ONLY what is printed on those pages. Do NOT guess or infer.
@@ -421,7 +455,15 @@ STRICT RULES
 • Radar axis labels must come from this whitelist ONLY:
   ["Length","Area","Velocity","Ell. ratio","LFS","X medium","Y medium","Accel. AP"].
   – If the figure shows Greek gamma “γ medium”, map it to "Y medium".
-• V.N. statuses: if only numeric V.N. ranges are printed (no “within/above/below”), set each "..._vn_status" = "not_printed".
+• V.N. statuses: Calculate by comparing measured value to V.N. value:
+  - If V.N. format is "X ± Y" or "X+/-Y": treat as range [X-Y to X+Y]
+    * "within" if inside the range
+    * "below" if less than the minimum
+    * "above" if greater than the maximum
+  - If V.N. is a single number "N" with no ±: treat as threshold (upper limit ≤ N)
+    * "within" if measured value ≤ N
+    * "above" if measured value > N (no "below" for thresholds)
+  - ONLY use "not_printed" if V.N. cell is truly blank/empty.
 • Loads sanity check: if left_load_pct + right_load_pct is not within [98,102], set both to null.
 • Cross-page discrepancies:
   – For any value printed on both Page-1 and Page-8 that differs:
@@ -452,7 +494,7 @@ After diagnostics, output the JSON ONLY between the exact fence markers:
 PAGE LAYOUT & FIELDS
 
 0) Page header (on page 1)
-- patient_name, test_datetime_local, duration_s (number), measure_condition (verbatim).
+- patient_name (actual patient's name, NOT clinic name), test_datetime_local, duration_s (number), measure_condition (verbatim).
 
 1) Page 1 — Baropodometry & Stabilometry (footprints + globals)
 - left_load_pct, right_load_pct
@@ -507,7 +549,7 @@ OUTPUT FORMAT (single JSON object)
 {
   "patient": { "name": "...", "name_detected_in": ["A","B","C"], "notes": null },
   "tests": {
-    "A": { "metadata": {...}, "page1": {...}, "page2": {...}, "page3": {...}, "page4_fft": {...}, "page5_sdc": {...}, "page8_dashboard": {...}, "discrepancies": { /* optional */ } },
+    "A": { "metadata": {...}, "page1": {...}, "page2": {...}, "page3": {...}, "page4_fft": {...}, "page5_sdc": {...}, "page6_synthesis": {...}, "page8_dashboard": {...}, "discrepancies": { /* optional */ } },
     "B": { ... },
     "C": { ... }
   },
@@ -574,7 +616,8 @@ Header
 
 (3) Diagnosis
 - Provide a concise diagnosis.
-- Explicitly RANK sensory systems (primary → secondary → minor) using JSON evidence.
+- Explicitly RANK sensory systems using this EXACT format: "PRIMARY: [visual|vestibular|proprioceptive|stomatognathic] → SECONDARY: [system] → MINOR: [system]" based on JSON evidence.
+  Example: "PRIMARY: visual → SECONDARY: proprioceptive → MINOR: vestibular"
 - Recommend next steps (e.g., visual reweighting, TMJ/occlusal evaluation, vestibular/oculomotor screen, foam conditions, re-testing).
 
 (4) Safety notes / methodological caveats
@@ -600,6 +643,32 @@ function extractOutputText(resp: any): string | null {
 function tryParseJSON(str: string | null): any | null {
   if (!str) return null;
   try { return JSON.parse(str); } catch { return null; }
+}
+
+// Helper function to clean extracted JSON and remove diagnostics
+function cleanExtractedJson(jsonText: string, reqId: string): string {
+  try {
+    const parsed = JSON.parse(jsonText);
+    
+    // Keep only the required fields
+    const cleaned = {
+      patient: parsed.patient || {},
+      tests: parsed.tests || {},
+      comparisons: parsed.comparisons || {}
+    };
+    
+    // Log if we're removing any unexpected fields
+    const extraFields = Object.keys(parsed).filter(key => !['patient', 'tests', 'comparisons'].includes(key));
+    if (extraFields.length > 0) {
+      console.log(`[analyze:${reqId}] Removing unexpected fields from extracted JSON: ${extraFields.join(', ')}`);
+    }
+    
+    return JSON.stringify(cleaned, null, 2);
+  } catch (e) {
+    // Return original if parsing fails
+    console.log(`[analyze:${reqId}] Unable to clean extracted JSON: ${e}`);
+    return jsonText;
+  }
 }
 
 function normalizeExtraction(ex: any) {
@@ -629,10 +698,75 @@ function normalizeExtraction(ex: any) {
 }
 
 export async function POST(req: NextRequest) {
+  // Collect debug logs if verbose mode is enabled
+  const debugLogs: string[] = [];
+  const originalConsoleLog = console.log;
+  
   try {
     const reqId = Math.random().toString(36).slice(2, 8);
     const t0 = Date.now();
+    
+    // Check if verbose mode is enabled and intercept console.log
+    const tempSettings = getDefaultSettings() as any;
+    if (tempSettings?.verboseOpenAI) {
+      // Helper function to sanitize base64 data in logs
+      const sanitizeBase64 = (obj: any): any => {
+        if (typeof obj === 'string') {
+          // Check for base64 data URLs
+          if (obj.includes('data:') && obj.includes('base64,')) {
+            // Replace the base64 content but keep the structure
+            return obj.replace(/data:([^;]+);base64,[A-Za-z0-9+/]+=*/g, (match, mimeType) => {
+              const fileType = mimeType.split('/')[1]?.toUpperCase() || 'FILE';
+              const sizeKB = Math.round(match.length / 1024);
+              return `data:${mimeType};base64,[${fileType} base64 - ${sizeKB}KB]`;
+            });
+          }
+          // Check for raw base64 strings (long strings with base64 chars)
+          if (obj.length > 5000 && /^[A-Za-z0-9+/]{100,}={0,2}$/.test(obj)) {
+            return `[Base64 data - ${Math.round(obj.length / 1024)}KB]`;
+          }
+          // Check for file_data property with base64
+          if (obj.length > 100 && obj.includes('"file_data"') && obj.includes('base64')) {
+            return obj.replace(/"file_data"\s*:\s*"data:[^"]+"/g, (match) => {
+              const sizeKB = Math.round(match.length / 1024);
+              return `"file_data": "[Base64 data - ${sizeKB}KB]"`;
+            });
+          }
+          return obj;
+        }
+        if (Array.isArray(obj)) {
+          return obj.map(sanitizeBase64);
+        }
+        if (obj && typeof obj === 'object') {
+          const result: any = {};
+          for (const key in obj) {
+            result[key] = sanitizeBase64(obj[key]);
+          }
+          return result;
+        }
+        return obj;
+      };
+      
+      console.log = (...args: any[]) => {
+        const message = args.map(arg => {
+          const sanitized = sanitizeBase64(arg);
+          return typeof sanitized === 'object' ? JSON.stringify(sanitized, null, 2) : String(sanitized);
+        }).join(' ');
+        debugLogs.push(message);
+        originalConsoleLog.apply(console, args);
+      };
+    }
+    
     console.log(`[analyze:${reqId}] Received request`);
+    const reqHeadersSafe: Record<string, string> = {};
+    req.headers.forEach((v, k) => {
+      if (k.toLowerCase() === "authorization") {
+        reqHeadersSafe[k] = v ? `${v.slice(0, 8)}…` : "";
+      } else {
+        reqHeadersSafe[k] = v;
+      }
+    });
+    console.log(`[analyze:${reqId}] Incoming headers`, reqHeadersSafe);
     const form = await req.formData();
     const neutral = form.get("neutral") as File | null;
     const closed = form.get("closed_eyes") as File | null;
@@ -668,8 +802,11 @@ export async function POST(req: NextRequest) {
       Buffer.from(await cotton.arrayBuffer()),
     ]);
 
+    const sha12 = (b: Buffer) => crypto.createHash('sha256').update(b).digest('hex').slice(0, 12);
+    console.log(`[analyze:${reqId}] Uploads → A(name=${neutral.name}, type=${neutral.type}, size=${neutral.size}, sha256_12=${sha12(neutralBuf)}), B(name=${closed.name}, type=${closed.type}, size=${closed.size}, sha256_12=${sha12(closedBuf)}), C(name=${cotton.name}, type=${cotton.type}, size=${cotton.size}, sha256_12=${sha12(cottonBuf)})`);
+
     // Convert PDFs to images for better visual interpretation
-    console.log(`[analyze:${reqId}] Converting PDFs to high-quality images for pages 1,2,3,4,5,8...`);
+    console.log(`[analyze:${reqId}] Converting PDFs to high-quality images for pages 1,2,3,4,5,6,8...`);
     const [neutralImages, closedImages, cottonImages] = await Promise.all([
       pdfToImages(neutralBuf),
       pdfToImages(closedBuf),
@@ -688,6 +825,9 @@ export async function POST(req: NextRequest) {
     const tPrep1 = Date.now();
     console.log(`[analyze:${reqId}] Prepared files and images in ${tPrep1 - tPrep0}ms`);
     console.log(`[analyze:${reqId}] Images extracted: A=${neutralImages.length}, B=${closedImages.length}, C=${cottonImages.length}`);
+    if (neutralImages.length === 0 || closedImages.length === 0 || cottonImages.length === 0) {
+      console.warn(`[analyze:${reqId}] One or more image sets are empty. PDF-to-image may have failed.`);
+    }
 
     // First pass: Extraction analysis directly on PDFs
     console.log(`[analyze:${reqId}] Starting extraction (Agent 1) using model=${extractionModel} ...`);
@@ -702,12 +842,12 @@ MANDATORY Processing Order:
 
 1. **FIRST: Parse PDFs for ALL text and table data**:
    - Three PDF reports: A = Neutral / Eyes Open, B = Eyes Closed, C = Eyes Closed + Cotton Rolls
-   - Use PDF parser to extract ALL text, numbers, tables from pages 1, 2, 3, 4, 5, and 8
-   - Extract patient names, dates, all numeric measurements, table values, load percentages
+   - Use PDF parser to extract ALL text, numbers, tables from pages 1, 2, 3, 4, 5, 6, and 8
+   - Extract patient names, dates, all numeric measurements, table values, load percentages (patients name is mentioned in one line with test date. the patients name is not hermann dental that is just the name of our clinic, so dont print that as patients name.)
    - Get ALL quantitative data from PDFs before looking at images
 
 2. **SECOND: Use PNG Images for visual interpretation ONLY**:
-   - High-resolution screenshots of pages 1, 2, 3, 4, 5, and 8 from each PDF
+   - High-resolution screenshots of pages 1, 2, 3, 4, 5, 6, and 8 from each PDF
    - ONLY use these for: interpreting graphs/plots, analyzing stabilogram patterns,
      understanding FFT spectra, viewing footprint heatmaps, assessing visual trends
    - Do NOT extract numbers from images - you should already have all numbers from PDF parsing
@@ -718,46 +858,89 @@ MANDATORY Processing Order:
    - Image analysis = qualitative patterns and visual assessments
 
 Scope
-Use ONLY pages 1, 2, 3, 4, 5, and 8. Ignore all other pages.
+Use ONLY pages 1, 2, 3, 4, 5, 6, and 8. Ignore all other pages.
 
-CRITICAL: Process Reporting & Debugging
-Before generating the final JSON, include in your response:
-1. **PDF Parsing Phase**: Report what text/tables you extracted from PDFs (e.g., "PDF Parse: Extracted Test A Page 1 table with 15 global metrics...")
-2. **Image Analysis Phase**: Report visual interpretations from images (e.g., "Image Analysis: Test A Page 3 shows AP-dominant oscillations...")
-3. **Issues Encountered**: Report any problems finding specific data, unclear values, or ambiguous readings
-4. **Missing Data**: Explicitly state what you cannot find and why (e.g., "Cannot locate arch_type in PDF text - field not present")
-5. **Decision Rationale**: When making qualitative assessments (e.g., less_stable_foot, dominant_plane), explain your visual reasoning
-6. **Data Quality Notes**: Mention any concerns about PDF parsing accuracy or image clarity
+CRITICAL: Output Structure Requirements
 
-After this diagnostic section, provide the final JSON output as specified.
+Your response MUST be in TWO distinct parts:
+
+PART 1: DIAGNOSTIC REPORT (Optional - plain text)
+If you encounter issues or used fallbacks, briefly list them here:
+- PDF parsing issues
+- Missing data  
+- Ambiguous values
+- Load percentage source (e.g., "Used page 1 fallback - page 6 only had 50/50" or "Page 6 loads used: 51/49")
+Skip this section if no issues and no fallbacks used.
+
+<<<JSON_START>>>
+PART 2: JSON EXTRACTION (Required)
+Place your JSON here - must contain ONLY these three top-level fields:
+- patient
+- tests
+- comparisons
+<<<JSON_END>>>
+
+IMPORTANT RULES:
+1. Diagnostics go BEFORE the JSON markers, NOT inside the JSON
+2. The JSON must contain ONLY these three top-level fields: patient, tests, comparisons
+3. Do NOT add a "diagnostics" field to the JSON
+4. Use the exact fence markers: <<<JSON_START>>> and <<<JSON_END>>>
+5. Everything between the markers must be valid JSON
 
 Strict rules
 - Extract ONLY what is printed on those pages (OCR if needed). Do NOT guess or infer.
 - Preserve units, but normalize decimals to dot (e.g., 11.57). Return numbers as JSON numbers, not strings.
-- If a printed value/field is missing, set it to null and mark the corresponding “…_vn_status” or “…_present” as "not_printed".
+- If a printed value/field is missing, set it to null. For V.N. statuses, only use "not_printed" when the V.N. cell is truly blank/empty (not when it contains a single number).
 - Qualitative descriptions of plots are allowed (short, factual, no speculation).
 - Absolutely NO clinical interpretation or diagnosis.
 
 PAGE LAYOUT & WHAT TO EXTRACT
 
 0) Page header (present on page 1)
-- patient_name: exact string as printed in the top-left header. Keep diacritics and spacing.
-- test_datetime_local: the “Test date” + time string as printed.
+- patient_name: the actual patient's name from the report (typically found on a line with the test date). NOT the clinic name from the header. Look for "Paziente:" or similar field. Keep diacritics and spacing.
+- test_datetime_local: the "Test date" + time string as printed.
 - duration_s: numeric duration in seconds, if printed.
-- measure_condition: string shown under the header (e.g., “Neutral”, “Closed Eyes”, “closed eyes cotton rolls”).
+- measure_condition: string shown under the header (e.g., "Neutral", "Closed Eyes", "closed eyes cotton rolls").
 
 1) Page 1 — Baropodometry & Stabilometry (footprints + globals)
-- Footprints/loads: left_load_pct, right_load_pct; left_mean_pressure, right_mean_pressure;
-  quadrant_loads ordered [UL, UR, LL, LR] if printed; arch_type_left/right if printed else null.
+- Load percentages determination:
+  PRIMARY SOURCE: Use page 6 GLOBAL SYNTHESIS percentages (if valid and not 50/50)
+  FALLBACK: If page 6 has only 50/50 or missing, use two-number pair near footprints on page 1 that sums to ~100 and is not 50/50
+  Final values: left_load_pct, right_load_pct (propagate chosen values here)
+- Mean pressures: left_mean_pressure, right_mean_pressure
+- Quadrant loads: ordered [UL, UR, LL, LR] if printed (these are the four numbers, NOT the L/R percentages)
+- Arch types: arch_type_left/right if printed else null.
 - COP mean coordinates table (with SD and V.N. status):
   cop_mean_x_mm, cop_sd_x_mm, cop_x_vn_status ∈ {"within","above","below","not_printed"}
   cop_mean_y_mm, cop_sd_y_mm, cop_y_vn_status ∈ same set.
-- Global metrics table (value + V.N. status each if shown):
-  length_mm, area_mm2, velocity_mm_s, l_s_ratio, ellipse_ratio,
-  ellipse_ap_deviation_deg, velocity_variance_total_mm_s,
-  velocity_variance_ml_mm_s, velocity_variance_ap_mm_s,
-  ap_acceleration_mm_s2, lfs.
-  For each, include a "..._vn_status" field with the same enum.
+  IMPORTANT: Calculate status by comparing mean value to V.N. value:
+  - If V.N. is "X ± Y": range [X-Y to X+Y] → within/below/above
+  - If V.N. is single number "N": threshold ≤ N → within/above only
+  - Only use "not_printed" if V.N. cell is empty
+- Global metrics table: Store in a nested "global_metrics" object where each metric has "value" and "vn_status":
+  global_metrics: {
+    length_mm: { value: <number>, vn_status: <string> },
+    area_mm2: { value: <number>, vn_status: <string> },
+    velocity_mm_s: { value: <number>, vn_status: <string> },
+    l_s_ratio: { value: <number>, vn_status: <string> },
+    ellipse_ratio: { value: <number>, vn_status: <string> },
+    ellipse_ap_deviation_deg: { value: <number>, vn_status: <string> },
+    velocity_variance_total_mm_s: { value: <number>, vn_status: <string> },
+    velocity_variance_ml_mm_s: { value: <number>, vn_status: <string> },
+    velocity_variance_ap_mm_s: { value: <number>, vn_status: <string> },
+    ap_acceleration_mm_s2: { value: <number>, vn_status: <string> },
+    lfs: { value: <number>, vn_status: <string> }
+  }
+  For each metric's V.N. status:
+  1. Extract the V.N. value from the table:
+     - If format is "X ± Y" or "X+/-Y": treat as range [X-Y to X+Y]
+     - If single number "N" with no ±: treat as threshold (upper limit ≤ N)
+  2. Compare measured value:
+     - For ranges: "within" if inside range, "below" if < min, "above" if > max
+     - For thresholds: "within" if ≤ N, "above" if > N (no "below" for thresholds)
+     - Example: If length V.N. is "60" and measured is 78.34, status is "above"
+     - Example: If area V.N. is "40±10" (range 30-50) and measured is 22.83, status is "below"
+  3. ONLY use "not_printed" if V.N. cell is truly blank/empty
 
 2) Page 2 — Foot Centers of Pressure & FOOT stabilograms
 - Per-foot numerical table (left & right): length_mm, area_mm2, velocity_mm_s,
@@ -786,7 +969,17 @@ PAGE LAYOUT & WHAT TO EXTRACT
 - Numeric table: mp_s, sp_s, md_mm, sd_mm, mt_s, st_s, area.
 - Qualitative: sdc_pattern ∈ {"regular","irregular","mixed","not_determinable"} and a brief sdc_note.
 
-6) Page 8 — Postural Index Dashboard
+6) Page 6 — GLOBAL SYNTHESIS
+- Load percentages: Look for two percentages immediately above "RETROPIEDE" text.
+  - Normalize commas to dots (51,0% → 51.0)
+  - Keep pairs that sum to 100 ±1
+  - Discard 50.0% / 50.0% (placeholder values)
+  - If multiple valid pairs exist, take the leftmost
+  - NEVER use four-number sets (those are quadrant loads)
+  - Store as: page6_left_load_pct, page6_right_load_pct
+  - If only 50/50 found or missing: set both to null
+
+7) Page 8 — Postural Index Dashboard
 - postural_index_score (number).
 - radar_expanded_axes: array of axis labels that appear most expanded.
 - radar_contracted_axes: array of labels most contracted.
@@ -795,28 +988,73 @@ Computed comparisons (use ONLY page-1 global metrics)
 - romberg_b_over_a: for each page-1 global metric, provide { ratio, pct_change }
   where ratio = B/A to 2 decimals and pct_change is a signed percent string (e.g., "+97%").
 - cotton_c_over_b: same structure comparing C/B.
+- sensory_ranking: Based on all metrics (ratios, LFS, FFT, SDC patterns), determine:
+  - primary: dominant sensory system (visual/vestibular/proprioceptive/stomatognathic/not_determinable)
+  - secondary: second most important system
+  - minor: least influential system
 
 OUTPUT FORMAT
-Return a single JSON object (no prose):
+Between <<<JSON_START>>> and <<<JSON_END>>>, return this exact structure:
 
 {
   "patient": {
-    "name": "<exact header string>",
+    "name": "<actual patient name>",
     "name_detected_in": ["A","B","C"],
     "notes": null
   },
   "tests": {
-    "A": { "metadata": { ... }, "page1": { ... }, "page2": { ... }, "page3": { ... }, "page4_fft": { ... }, "page5_sdc": { ... }, "page8_dashboard": { ... } },
+    "A": { 
+      "metadata": { 
+        "test_datetime_local": "...",
+        "duration_s": 30,
+        "measure_condition": "..."
+      },
+      "page1": {
+        "page6_left_load_pct": <number>,
+        "page6_right_load_pct": <number>,
+        "left_mean_pressure": <number>,
+        "right_mean_pressure": <number>,
+        "quadrant_loads": [<4 numbers>],
+        "arch_type_left": null,
+        "arch_type_right": null,
+        "cop_mean_x_mm": <number>,
+        "cop_sd_x_mm": <number>,
+        "cop_x_vn_status": "...",
+        "cop_mean_y_mm": <number>,
+        "cop_sd_y_mm": <number>,
+        "cop_y_vn_status": "...",
+        "global_metrics": {
+          "length_mm": { "value": <number>, "vn_status": "..." },
+          "area_mm2": { "value": <number>, "vn_status": "..." },
+          "velocity_mm_s": { "value": <number>, "vn_status": "..." },
+          "l_s_ratio": { "value": <number>, "vn_status": "..." },
+          "ellipse_ratio": { "value": <number>, "vn_status": "..." },
+          "ellipse_ap_deviation_deg": { "value": <number>, "vn_status": "..." },
+          "velocity_variance_total_mm_s": { "value": <number>, "vn_status": "..." },
+          "velocity_variance_ml_mm_s": { "value": <number>, "vn_status": "..." },
+          "velocity_variance_ap_mm_s": { "value": <number>, "vn_status": "..." },
+          "ap_acceleration_mm_s2": { "value": <number>, "vn_status": "..." },
+          "lfs": { "value": <number>, "vn_status": "..." }
+        }
+      },
+      "page2": { ... },
+      "page3": { ... },
+      "page4_fft": { ... },
+      "page5_sdc": { ... },
+      "page6_synthesis": { ... },
+      "page8_dashboard": { ... }
+    },
     "B": { ... },
     "C": { ... }
   },
   "comparisons": {
     "romberg_b_over_a": { ... },
-    "cotton_c_over_b": { ... }
+    "cotton_c_over_b": { ... },
+    "sensory_ranking": { "primary": "...", "secondary": "...", "minor": "..." }
   }
 }
 
-No narrative. No diagnosis.`;
+No narrative. No diagnosis. No extra fields.`;
 
     const extractionInput: any[] = [
       {
@@ -852,6 +1090,10 @@ No narrative. No diagnosis.`;
       }
     ];
 
+    console.log(`[analyze:${reqId}] OpenAI#1 (extraction) request: model=${extractionModel}, input_parts=${extractionInput[0].content.length}`);
+    if ((getDefaultSettings() as any).verboseOpenAI) {
+      console.log(`[analyze:${reqId}] OpenAI#1 exact payload:`, JSON.stringify({ model: extractionModel, input: extractionInput }, null, 2));
+    }
     const extractionResp = await openai.responses.create({
       model: extractionModel,
       input: extractionInput,
@@ -863,6 +1105,12 @@ No narrative. No diagnosis.`;
 
     const extractionText: string = (extractionResp as any).output_text
       || (((extractionResp as any).output?.[0]?.content?.[0]?.text) ?? "");
+    const verboseMode = (getDefaultSettings() as any).verboseOpenAI;
+    if (!verboseMode) {
+      console.log(`[analyze:${reqId}] OpenAI#1 (extraction) raw preview:`, extractionText.slice(0, 400).replace(/\s+/g, ' '));
+    } else {
+      console.log(`[analyze:${reqId}] OpenAI#1 exact response:`, JSON.stringify(extractionResp, null, 2));
+    }
     const tExt1 = Date.now();
     console.log(`[analyze:${reqId}] Extraction completed in ${tExt1 - tExt0}ms, chars=${extractionText?.length || 0}`);
 
@@ -877,21 +1125,38 @@ No narrative. No diagnosis.`;
     const fenceEnd = '<<<JSON_END>>>';
     const startIdx = extractionText.indexOf(fenceStart);
     const endIdx = extractionText.lastIndexOf(fenceEnd);
+    
     if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+      // Found fence markers - use them
       extractionDiagnostics = extractionText.substring(0, startIdx).trim();
       extractionJsonText = extractionText.substring(startIdx + fenceStart.length, endIdx).trim();
     } else {
-      // Fallback: split at first JSON opening brace
-      const jsonStartIndex = extractionText.indexOf('{');
-      if (jsonStartIndex > 0) {
-        extractionDiagnostics = extractionText.substring(0, jsonStartIndex).trim();
-        extractionJsonText = extractionText.substring(jsonStartIndex).trim();
+      // No fence markers - try to detect JSON structure
+      // Look for JSON that starts with {"patient": or {"diagnostics":
+      const jsonMatch = extractionText.match(/(\{[\s\S]*"patient"[\s\S]*\})\s*$/);
+      if (jsonMatch) {
+        extractionJsonText = jsonMatch[1];
+        extractionDiagnostics = extractionText.substring(0, jsonMatch.index).trim();
+      } else {
+        // Fallback: split at first JSON opening brace
+        const jsonStartIndex = extractionText.indexOf('{');
+        if (jsonStartIndex > 0) {
+          extractionDiagnostics = extractionText.substring(0, jsonStartIndex).trim();
+          extractionJsonText = extractionText.substring(jsonStartIndex).trim();
+        }
       }
     }
+    
+    // Clean up the JSON to ensure it only contains required fields
+    extractionJsonText = cleanExtractedJson(extractionJsonText, reqId);
+    // Log extraction diagnostics if available
+    const verboseDiag = (getDefaultSettings() as any).verboseOpenAI;
     if (extractionDiagnostics) {
-      console.log(`[analyze:${reqId}] === Extraction Diagnostics ===`);
-      console.log(extractionDiagnostics);
-      console.log(`[analyze:${reqId}] === End Diagnostics ===`);
+      if (verboseDiag) {
+        console.log(`[analyze:${reqId}] Extraction diagnostics:\n${extractionDiagnostics}`);
+      } else {
+        console.log(`[analyze:${reqId}] Extraction diagnostics available (${extractionDiagnostics.length} chars)`);
+      }
     }
 
     // Second pass: Knowledge augmentation (RAG) based on extraction using vector store
@@ -909,6 +1174,10 @@ No narrative. No diagnosis.`;
       }
     ];
 
+    console.log(`[analyze:${reqId}] OpenAI#2 (augmentation) request: model=${model}, kb=${settings.vectorStoreId ? 'on' : 'off'}, input_len=${augmentationInput[0].content.map((p:any)=>p.text||'').join('\n').length}`);
+    if ((getDefaultSettings() as any).verboseOpenAI) {
+      console.log(`[analyze:${reqId}] OpenAI#2 exact payload:`, JSON.stringify({ model, input: augmentationInput, tools: settings.vectorStoreId ? [{ type: 'file_search', vector_store_ids: [settings.vectorStoreId] }] : [{ type: 'file_search', vector_store_ids: [] }] }, null, 2));
+    }
     const augmentedResp = await openai.responses.create({
       model,
       input: augmentationInput,
@@ -930,12 +1199,18 @@ No narrative. No diagnosis.`;
 
     const augmentedText: string = (augmentedResp as any).output_text
       || (((augmentedResp as any).output?.[0]?.content?.[0]?.text) ?? "");
+    const verboseMode2 = (getDefaultSettings() as any).verboseOpenAI;
+    if (!verboseMode2) {
+      console.log(`[analyze:${reqId}] OpenAI#2 (augmentation) raw preview:`, augmentedText.slice(0, 300).replace(/\s+/g, ' '));
+    } else {
+      console.log(`[analyze:${reqId}] OpenAI#2 exact response:`, JSON.stringify(augmentedResp, null, 2));
+    }
     const tAug1 = Date.now();
     console.log(`[analyze:${reqId}] Augmentation completed in ${tAug1 - tAug0}ms, chars=${augmentedText?.length || 0}`);
     const t1 = Date.now();
     console.log(`[analyze:${reqId}] Done in ${t1 - t0}ms`);
 
-    return new Response(JSON.stringify({ ok: true, data: {
+    const respPayload = { ok: true, data: {
       mode,
       extractionReportText: extractionJsonText,
       // Provide parsed JSON too when possible
@@ -949,18 +1224,30 @@ No narrative. No diagnosis.`;
         extractionModel,
         augmentationModel: model,
         vectorStoreUsed: Boolean(settings.vectorStoreId),
-        extractionDiagnostics: extractionDiagnostics || "No diagnostic output provided"
+        extractionDiagnostics: extractionDiagnostics || "No diagnostic output provided",
+        // Include full debug logs if verbose mode is enabled
+        ...(settings?.verboseOpenAI ? { verboseLogs: debugLogs } : {})
       }
-    }}), {
+    }};
+    const verboseFinal = (getDefaultSettings() as any).verboseOpenAI;
+    if (!verboseFinal) {
+      console.log(`[analyze:${reqId}] → Response body preview:`, truncateForLog(JSON.stringify(respPayload), 2000));
+    }
+    return new Response(JSON.stringify(respPayload), {
           status: 200,
           headers: { "content-type": "application/json" },
         });
   } catch (error) {
+    // Restore original console.log
+    console.log = originalConsoleLog;
     console.error("Error in analyze route:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
     return new Response(JSON.stringify({ ok: false, error: message }), {
       status: 500,
       headers: { "content-type": "application/json" },
     });
+  } finally {
+    // Always restore original console.log
+    console.log = originalConsoleLog;
   }
 }

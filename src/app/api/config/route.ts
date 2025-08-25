@@ -10,7 +10,8 @@ export async function GET(_req: NextRequest) {
     model: s.model,
     language: s.language,
     vectorStoreId: s.vectorStoreId,
-    hasApiKey: Boolean(s.apiKey)
+    hasApiKey: Boolean(s.apiKey),
+    verboseOpenAI: Boolean((s as any).verboseOpenAI)
   }), {
     status: 200,
     headers: { "content-type": "application/json" }
