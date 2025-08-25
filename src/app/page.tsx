@@ -410,12 +410,12 @@ export default function Home() {
         if (text.includes("<!DOCTYPE") || text.includes("<html")) {
           console.error("[UI] ERROR: Received HTML instead of JSON. API route not found.");
           setError("API route not found. The server returned HTML instead of JSON. This usually means the API endpoint doesn't exist or isn't configured properly on Netlify.");
-          setLoading(false);
+          setBusy(false);
           return;
         }
         
         setError(`Invalid response type: ${contentType}. Expected JSON. Response: ${text.substring(0, 200)}`);
-        setLoading(false);
+        setBusy(false);
         return;
       }
       
@@ -427,7 +427,7 @@ export default function Home() {
         const text = await res.text();
         console.error("[UI] Raw response:", text.substring(0, 500));
         setError("Failed to parse server response as JSON");
-        setLoading(false);
+        setBusy(false);
         return;
       }
       dlog("/api/analyze status:", res.status, "keys:", Object.keys(data||{}));
@@ -1008,11 +1008,11 @@ export default function Home() {
                       <span className="px-2 py-1 rounded-full bg-purple-50 border border-purple-200">References</span>
                     </div>
                   </section>
-                )}
+            )}
 
                 {/* Data Visualizations */}
                 {extracted && (
-                  <section className="glass-card p-6">
+              <section className="glass-card p-6">
                     <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
                       <BarChart3 className="h-5 w-5" />
                       Data Analysis & Visualizations
@@ -1069,7 +1069,7 @@ export default function Home() {
                     )}
                   </section>
                 )}
-
+                
                 {/* Debug Logs Viewer (when verbose mode is enabled) */}
                 {((result as any)?.debug?.verboseLogs) && (
                   <DebugLogViewer 
